@@ -801,6 +801,8 @@
                             <exclude>src/main/resources/public/static/rulenode/**</exclude>
                             <exclude>**/*.proto.js</exclude>
                             <exclude>docker/haproxy/**</exclude>
+                            <exclude>xxl-job-admin/**</exclude>
+                            <exclude>xxl-job-core/**</exclude>
                             <exclude>docker/tb-node/**</exclude>
                             <exclude>ui/**</exclude>
                             <exclude>src/.browserslistrc</exclude>
