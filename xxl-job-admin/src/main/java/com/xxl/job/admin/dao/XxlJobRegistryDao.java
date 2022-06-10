@@ -4,6 +4,7 @@ import com.xxl.job.admin.core.model.XxlJobRegistry;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
+import java.time.LocalDateTime;
 import java.util.Date;
 import java.util.List;
 
@@ -13,13 +14,11 @@ import java.util.List;
 @Mapper
 public interface XxlJobRegistryDao {
 
-    public List<Integer> findDead(@Param("timeout") int timeout,
-                                  @Param("nowTime") Date nowTime);
+    public List<Integer> findDead(@Param("nowTime") Date nowTime);
 
     public int removeDead(@Param("ids") List<Integer> ids);
 
-    public List<XxlJobRegistry> findAll(@Param("timeout") int timeout,
-                                        @Param("nowTime") Date nowTime);
+    public List<XxlJobRegistry> findAll(@Param("nowTime") Date nowTime);
 
     public int registryUpdate(@Param("registryGroup") String registryGroup,
                               @Param("registryKey") String registryKey,
