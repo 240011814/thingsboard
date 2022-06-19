@@ -26,6 +26,8 @@ import org.thingsboard.server.common.data.id.UserId;
 import org.thingsboard.server.common.data.security.Authority;
 import org.thingsboard.server.service.security.model.SecurityUser;
 
+import static org.thingsboard.server.service.security.permission.TenantAdminPermissions.propertyEntityPermissionChecker;
+
 @Component(value = "customerUserPermissions")
 public class CustomerUserPermissions extends AbstractPermissions {
 
@@ -42,6 +44,7 @@ public class CustomerUserPermissions extends AbstractPermissions {
         put(Resource.WIDGET_TYPE, widgetsPermissionChecker);
         put(Resource.EDGE, customerEntityPermissionChecker);
         put(Resource.RPC, rpcPermissionChecker);
+        put(Resource.PROPERTY,propertyEntityPermissionChecker);
     }
 
     private static final PermissionChecker customerAlarmPermissionChecker = new PermissionChecker() {

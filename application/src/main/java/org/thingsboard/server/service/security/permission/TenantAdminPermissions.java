@@ -45,7 +45,20 @@ public class TenantAdminPermissions extends AbstractPermissions {
         put(Resource.OTA_PACKAGE, tenantEntityPermissionChecker);
         put(Resource.EDGE, tenantEntityPermissionChecker);
         put(Resource.RPC, tenantEntityPermissionChecker);
+        put(Resource.PROPERTY,propertyEntityPermissionChecker);
     }
+
+    public static final PermissionChecker propertyEntityPermissionChecker = new PermissionChecker() {
+
+        @Override
+        public boolean hasPermission(SecurityUser user, Operation operation, EntityId entityId, HasTenantId entity) {
+
+            if (!user.getTenantId().equals(entity.getTenantId())) {
+                return false;
+            }
+            return true;
+        }
+    };
 
     public static final PermissionChecker tenantEntityPermissionChecker = new PermissionChecker() {
 

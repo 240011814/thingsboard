@@ -643,6 +643,26 @@ CREATE TABLE IF NOT EXISTS rpc (
     status varchar(255) NOT NULL
 );
 
+CREATE TABLE public.product_property (
+     id uuid NOT NULL,
+     "name" varchar(255) NOT NULL,
+     "key" varchar(255) NOT NULL,
+     read_mode varchar(100) NOT NULL,
+     img_url varchar(1000) NULL,
+     data_type varchar(255) NOT NULL,
+     data_profile jsonb NULL,
+     created_time int8 NOT NULL,
+     tenant_id uuid NOT NULL,
+     device_profile_id uuid NOT NULL,
+     description varchar(255) NULL,
+     collect_type varchar(255) NULL,
+     collect_profile jsonb NULL,
+     "group" varchar(255) NULL,
+     CONSTRAINT product_property_pk PRIMARY KEY (id),
+     CONSTRAINT product_property_un UNIQUE (name, device_profile_id),
+     CONSTRAINT product_property_un_name UNIQUE (key, device_profile_id)
+);
+
 CREATE OR REPLACE PROCEDURE cleanup_events_by_ttl(
     IN regular_events_start_ts bigint,
     IN regular_events_end_ts bigint,
