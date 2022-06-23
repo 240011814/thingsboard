@@ -643,6 +643,7 @@ CREATE TABLE IF NOT EXISTS rpc (
     status varchar(255) NOT NULL
 );
 
+
 CREATE TABLE public.product_property (
      id uuid NOT NULL,
      "name" varchar(255) NOT NULL,
@@ -657,7 +658,8 @@ CREATE TABLE public.product_property (
      description varchar(255) NULL,
      collect_type varchar(255) NULL,
      collect_profile jsonb NULL,
-     "group" varchar(255) NULL,
+     property_group varchar(255) NULL,
+     order_info int8 NOT NULL DEFAULT 0,
      CONSTRAINT product_property_pk PRIMARY KEY (id),
      CONSTRAINT product_property_un UNIQUE (name, device_profile_id),
      CONSTRAINT product_property_un_name UNIQUE (key, device_profile_id)

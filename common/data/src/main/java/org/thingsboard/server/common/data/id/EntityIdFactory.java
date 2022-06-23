@@ -77,6 +77,8 @@ public class EntityIdFactory {
                 return new EdgeId(uuid);
             case RPC:
                 return new RpcId(uuid);
+            case PRODUCT_PROPERTY:
+                return new PropertyId(uuid);
         }
         throw new IllegalArgumentException("EntityType " + type + " is not supported!");
     }

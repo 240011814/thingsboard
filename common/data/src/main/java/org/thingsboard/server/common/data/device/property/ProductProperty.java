@@ -30,6 +30,7 @@ public class ProductProperty extends BaseData<PropertyId> implements HasTenantId
     private String readMode;
     private String imgUrl;
     private String dataType;
+    private  Integer order;
     private String description;
     private String group;
     private String collectType;

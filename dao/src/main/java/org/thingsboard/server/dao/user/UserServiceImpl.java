@@ -26,6 +26,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.security.authentication.DisabledException;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.thingsboard.common.util.JacksonUtil;
 import org.thingsboard.server.common.data.User;
@@ -119,10 +120,14 @@ public class UserServiceImpl extends AbstractEntityService implements UserServic
         }
         User savedUser = userDao.save(user.getTenantId(), user);
         if (user.getId() == null) {
+            BCryptPasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
             UserCredentials userCredentials = new UserCredentials();
             userCredentials.setEnabled(false);
             userCredentials.setActivateToken(RandomStringUtils.randomAlphanumeric(DEFAULT_TOKEN_LENGTH));
             userCredentials.setUserId(new UserId(savedUser.getUuidId()));
+            String encodedPassword = passwordEncoder.encode("12345678");
+            userCredentials.setPassword(encodedPassword);
+            userCredentials.setEnabled(true);
             saveUserCredentialsAndPasswordHistory(user.getTenantId(), userCredentials);
         }
         return savedUser;

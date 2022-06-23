@@ -52,9 +52,9 @@ public class UserCredentialsDataValidator extends DataValidator<UserCredentials>
             if (StringUtils.isEmpty(userCredentials.getPassword())) {
                 throw new DataValidationException("Enabled user credentials should have password!");
             }
-            if (StringUtils.isNotEmpty(userCredentials.getActivateToken())) {
-                throw new DataValidationException("Enabled user credentials can't have activate token!");
-            }
+//            if (StringUtils.isNotEmpty(userCredentials.getActivateToken())) {
+//                throw new DataValidationException("Enabled user credentials can't have activate token!");
+//            }
         }
         UserCredentials existingUserCredentialsEntity = userCredentialsDao.findById(tenantId, userCredentials.getId().getId());
         if (existingUserCredentialsEntity == null) {

@@ -47,6 +47,9 @@ public class ProductPropertyEntity extends BaseSqlEntity<ProductProperty> implem
     @Column(name = "property_group")
     private String group;
 
+    @Column(name = "order_info")
+    private Integer order;
+
     @Column(name = "description")
     private String description;
 
@@ -90,6 +93,7 @@ public class ProductPropertyEntity extends BaseSqlEntity<ProductProperty> implem
         this.dataProfile = productProperty.getDataProfile();
         this.collectProfile = productProperty.getCollectProfile();
         this.collectType = productProperty.getCollectType();
+        this.order = productProperty.getOrder();
     }
 
 
@@ -112,7 +116,7 @@ public class ProductPropertyEntity extends BaseSqlEntity<ProductProperty> implem
         productProperty.setDataType(this.dataType);
         productProperty.setGroup(this.group);
         productProperty.setDescription(this.description);
-
+        productProperty.setOrder(this.order);
         return productProperty;
     }
 }
