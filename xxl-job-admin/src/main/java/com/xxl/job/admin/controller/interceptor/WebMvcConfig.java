@@ -1,6 +1,8 @@
 package com.xxl.job.admin.controller.interceptor;
 
+import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.web.servlet.config.annotation.CorsRegistry;
 import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
@@ -25,4 +27,19 @@ public class WebMvcConfig implements WebMvcConfigurer {
         registry.addInterceptor(cookieInterceptor).addPathPatterns("/**");
     }
 
+
+    @Bean
+    public WebMvcConfigurer corsConfigurer() {
+
+        return new WebMvcConfigurer() {
+            @Override
+            public void addCorsMappings(CorsRegistry registry) {
+                registry.addMapping("/**")
+                        .allowCredentials(true)
+                        .allowedOriginPatterns("*")
+                        .allowedMethods("*")
+                        .allowedHeaders("*");
+            }
+        };
+    }
 }

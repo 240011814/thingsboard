@@ -15,12 +15,47 @@
  */
 package org.thingsboard.server.job;
 
+import com.eclipsesource.json.Json;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.google.common.util.concurrent.FutureCallback;
+import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
 import com.xxl.job.core.context.XxlJobHelper;
 import com.xxl.job.core.handler.annotation.XxlJob;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
+import org.springframework.web.context.request.async.DeferredResult;
+import org.thingsboard.common.util.JacksonUtil;
+import org.thingsboard.server.common.data.StringUtils;
+import org.thingsboard.server.common.data.User;
+import org.thingsboard.server.common.data.asset.Asset;
+import org.thingsboard.server.common.data.audit.ActionType;
+import org.thingsboard.server.common.data.id.*;
+import org.thingsboard.server.common.data.page.PageData;
+import org.thingsboard.server.common.data.page.PageLink;
+import org.thingsboard.server.common.data.rpc.RpcError;
+import org.thingsboard.server.common.data.rpc.ToDeviceRpcRequestBody;
+import org.thingsboard.server.common.data.security.Authority;
+import org.thingsboard.server.common.msg.rpc.FromDeviceRpcResponse;
+import org.thingsboard.server.common.msg.rpc.ToDeviceRpcRequest;
+import org.thingsboard.server.common.transport.util.JsonUtils;
+import org.thingsboard.server.controller.BaseController;
+import org.thingsboard.server.controller.HttpValidationCallback;
+import org.thingsboard.server.dao.asset.AssetService;
+import org.thingsboard.server.dao.audit.AuditLogService;
+import org.thingsboard.server.dao.user.UserService;
+import org.thingsboard.server.service.rpc.LocalRequestMetaData;
+import org.thingsboard.server.service.rpc.TbCoreDeviceRpcService;
+import org.thingsboard.server.service.security.AccessValidator;
+import org.thingsboard.server.service.security.model.SecurityUser;
+import org.thingsboard.server.service.security.permission.Operation;
+import org.thingsboard.server.service.telemetry.exception.ToErrorResponseEntity;
 
+import javax.annotation.Nullable;
 import java.io.BufferedInputStream;
 import java.io.BufferedReader;
 import java.io.DataOutputStream;
@@ -28,6 +63,9 @@ import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.util.Arrays;
+import java.util.Map;
+import java.util.Optional;
+import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -35,8 +73,22 @@ import java.util.concurrent.TimeUnit;
  * since 2022/6/7 15:18
  */
 @Component
-public class SampleXxlJob {
-    private static Logger logger = LoggerFactory.getLogger(SampleXxlJob.class);
+public class ThingsBoardJob {
+    private static Logger logger = LoggerFactory.getLogger(ThingsBoardJob.class);
+    private final AuditLogService auditLogService;
+    private final UserService userService;
+    private final TbCoreDeviceRpcService deviceRpcService;
+    private final AssetService assetService;
+
+    public ThingsBoardJob(AuditLogService auditLogService,
+                          UserService userService,
+                          TbCoreDeviceRpcService deviceRpcService,
+                          AssetService assetService) {
+        this.auditLogService = auditLogService;
+        this.userService = userService;
+        this.deviceRpcService = deviceRpcService;
+        this.assetService = assetService;
+    }
 
 
     /**
@@ -51,6 +103,97 @@ public class SampleXxlJob {
             TimeUnit.SECONDS.sleep(2);
         }
         // default success
+    }
+
+
+    @XxlJob("rpcJobHandler")
+    public void rpcJobHandler() throws Exception {
+        XxlJobHelper.log("XXL-JOB,rpcJobHandler.");
+        String command = XxlJobHelper.getJobParam();
+
+        if(StringUtils.isEmpty(command)){
+            XxlJobHelper.handleFail("param error");
+        }
+        JsonElement jsonElement = JsonUtils.parse(command);
+        String tenantIdString = jsonElement.getAsJsonObject().get("tenantId").getAsString();
+        JsonArray jobs = jsonElement.getAsJsonObject().get("param").getAsJsonArray();
+        TenantId tenantId = new TenantId(UUID.fromString(tenantIdString));
+        PageData<User> tenantAdmins = userService.findTenantAdmins(tenantId, new PageLink(10));
+        Optional<User> first = tenantAdmins.getData().stream().findFirst();
+        if(first.isPresent()) {
+
+            jobs.forEach(x -> {
+                String assetId = x.getAsString();
+                Asset asset = assetService.findAssetById(tenantId, new AssetId(UUID.fromString(assetId)));
+                JsonNode additionalInfo = asset.getAdditionalInfo();
+                ToDeviceRpcRequest rpcRequest = new ToDeviceRpcRequest(UUID.randomUUID(),
+                        tenantId,
+                        new DeviceId(UUID.fromString(additionalInfo.get("id").asText())),
+                        true,
+                        System.currentTimeMillis() + 30 * 1000,
+                        new ToDeviceRpcRequestBody("setProperty", JacksonUtil.toString(Map.of("key", additionalInfo.get("key"),
+                                "value", additionalInfo.get("value")))),
+                        true,
+                        1,
+                        ""
+                );
+                deviceRpcService.processRestApiRpcRequest(rpcRequest, fromDeviceRpcResponse -> {
+                    reply(new LocalRequestMetaData(rpcRequest, new SecurityUser(first.get(), true, null), null), fromDeviceRpcResponse);
+                }, null);
+
+            });
+        }
+        XxlJobHelper.handleSuccess("定时任务执行完毕");
+    }
+
+
+    public void reply(LocalRequestMetaData rpcRequest, FromDeviceRpcResponse response) {
+        Optional<RpcError> rpcError = response.getError();
+
+        if (rpcError.isPresent()) {
+            logRpcCall(rpcRequest, rpcError, null);
+        } else {
+            Optional<String> responseData = response.getResponse();
+            if (responseData.isPresent() && !org.springframework.util.StringUtils.isEmpty(responseData.get())) {
+                String data = responseData.get();
+                try {
+                    logRpcCall(rpcRequest, rpcError, null);
+                } catch (IllegalArgumentException e) {
+                    logger.debug("Failed to decode device response: {}", data, e);
+                    logRpcCall(rpcRequest, rpcError, e);
+                }
+            } else {
+                logRpcCall(rpcRequest, rpcError, null);
+            }
+        }
+    }
+
+    private void logRpcCall(LocalRequestMetaData rpcRequest, Optional<RpcError> rpcError, Throwable e) {
+        logRpcCall(rpcRequest.getUser(), rpcRequest.getRequest().getDeviceId(), rpcRequest.getRequest().getBody(), rpcRequest.getRequest().isOneway(), rpcError, null);
+    }
+
+
+    private void logRpcCall(SecurityUser user, EntityId entityId, ToDeviceRpcRequestBody body, boolean oneWay, Optional<RpcError> rpcError, Throwable e) {
+        String rpcErrorStr = "";
+        if (rpcError.isPresent()) {
+            rpcErrorStr = "RPC Error: " + rpcError.get().name();
+        }
+        String method = body.getMethod();
+        String params = body.getParams();
+
+        auditLogService.logEntityAction(
+                user.getTenantId(),
+                user.getCustomerId(),
+                user.getId(),
+                "定时任务",
+                (UUIDBased & EntityId) entityId,
+                null,
+                ActionType.RPC_CALL,
+                BaseController.toException(e),
+                rpcErrorStr,
+                oneWay,
+                method,
+                params);
     }
 
 

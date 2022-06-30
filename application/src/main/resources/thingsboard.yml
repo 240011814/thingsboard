@@ -18,7 +18,7 @@ server:
   # Server bind address
   address: "${HTTP_BIND_ADDRESS:0.0.0.0}"
   # Server bind port
-  port: "${HTTP_BIND_PORT:8080}"
+  port: "${HTTP_BIND_PORT:8980}"
   # Server SSL configuration
   ssl:
     # Enable/disable SSL support
@@ -1117,12 +1117,12 @@ management:
 xxl:
   job:
     admin:
-      addresses: http://127.0.0.1:9000/xxl-job-admin
+      addresses: http://127.0.0.1:19000/xxl-job-admin
     accessToken: default_token
     executor:
       appname: things
       address:
       ip:
-      port: 9999
+      port: 19999
       logpath: /data/applogs/xxl-job/jobhandler
       logretentiondays: 30

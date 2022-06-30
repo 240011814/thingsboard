@@ -79,6 +79,7 @@ public class EntityKeyMapping {
     public static final List<String> commonEntityFields = Arrays.asList(CREATED_TIME, ENTITY_TYPE, NAME, ADDITIONAL_INFO);
     public static final List<String> dashboardEntityFields = Arrays.asList(CREATED_TIME, ENTITY_TYPE, TITLE);
     public static final List<String> labeledEntityFields = Arrays.asList(CREATED_TIME, ENTITY_TYPE, NAME, TYPE, LABEL, ADDITIONAL_INFO);
+    public static final List<String> deviceEntityFields = Arrays.asList(CREATED_TIME, ENTITY_TYPE, NAME, TYPE, LABEL, ADDITIONAL_INFO, "deviceProfileId");
     public static final List<String> contactBasedEntityFields = Arrays.asList(CREATED_TIME, ENTITY_TYPE, EMAIL, TITLE, COUNTRY, STATE, CITY, ADDRESS, ADDRESS_2, ZIP, PHONE, ADDITIONAL_INFO);
 
     public static final Set<String> apiUsageStateEntityFields =  new HashSet<>(Arrays.asList(CREATED_TIME, ENTITY_TYPE, NAME));
@@ -86,7 +87,7 @@ public class EntityKeyMapping {
     public static final Set<String> relationQueryEntityFieldsSet = new HashSet<>(Arrays.asList(CREATED_TIME, ENTITY_TYPE, NAME, TYPE, LABEL, FIRST_NAME, LAST_NAME, EMAIL, REGION, TITLE, COUNTRY, STATE, CITY, ADDRESS, ADDRESS_2, ZIP, PHONE, ADDITIONAL_INFO, RELATED_PARENT_ID));
 
     static {
-        allowedEntityFieldMap.put(EntityType.DEVICE, new HashSet<>(labeledEntityFields));
+        allowedEntityFieldMap.put(EntityType.DEVICE, new HashSet<>(deviceEntityFields));
         allowedEntityFieldMap.put(EntityType.ASSET, new HashSet<>(labeledEntityFields));
         allowedEntityFieldMap.put(EntityType.ENTITY_VIEW, new HashSet<>(typedEntityFields));
 
@@ -109,6 +110,7 @@ public class EntityKeyMapping {
         entityFieldColumnMap.put(NAME, "name");
         entityFieldColumnMap.put(TYPE, "type");
         entityFieldColumnMap.put(LABEL, "label");
+        entityFieldColumnMap.put("deviceProfileId", "device_profile_id");
         entityFieldColumnMap.put(FIRST_NAME, ModelConstants.USER_FIRST_NAME_PROPERTY);
         entityFieldColumnMap.put(LAST_NAME, ModelConstants.USER_LAST_NAME_PROPERTY);
         entityFieldColumnMap.put(EMAIL, ModelConstants.EMAIL_PROPERTY);

@@ -1,5 +1,6 @@
 package com.xxl.job.admin.controller;
 
+import com.xxl.job.admin.controller.annotation.PermissionLimit;
 import com.xxl.job.admin.core.cron.CronExpression;
 import com.xxl.job.admin.core.exception.XxlJobException;
 import com.xxl.job.admin.core.model.XxlJobGroup;
@@ -45,7 +46,8 @@ public class JobInfoController {
 	private XxlJobGroupDao xxlJobGroupDao;
 	@Resource
 	private XxlJobService xxlJobService;
-	
+
+//	@PermissionLimit(limit = false)
 	@RequestMapping
 	public String index(HttpServletRequest request, Model model, @RequestParam(required = false, defaultValue = "-1") int jobGroup) {
 
@@ -97,7 +99,8 @@ public class JobInfoController {
 			throw new RuntimeException(I18nUtil.getString("system_permission_limit") + "[username="+ loginUser.getUsername() +"]");
 		}
 	}
-	
+
+	@PermissionLimit(limit = false)
 	@RequestMapping("/pageList")
 	@ResponseBody
 	public Map<String, Object> pageList(@RequestParam(required = false, defaultValue = "0") int start,  
@@ -106,37 +109,43 @@ public class JobInfoController {
 		
 		return xxlJobService.pageList(start, length, jobGroup, triggerStatus, jobDesc, executorHandler, author);
 	}
-	
+
+	@PermissionLimit(limit = false)
 	@RequestMapping("/add")
 	@ResponseBody
 	public ReturnT<String> add(XxlJobInfo jobInfo) {
 		return xxlJobService.add(jobInfo);
 	}
-	
+
+	@PermissionLimit(limit = false)
 	@RequestMapping("/update")
 	@ResponseBody
 	public ReturnT<String> update(XxlJobInfo jobInfo) {
 		return xxlJobService.update(jobInfo);
 	}
-	
+
+	@PermissionLimit(limit = false)
 	@RequestMapping("/remove")
 	@ResponseBody
 	public ReturnT<String> remove(int id) {
 		return xxlJobService.remove(id);
 	}
-	
+
+	@PermissionLimit(limit = false)
 	@RequestMapping("/stop")
 	@ResponseBody
 	public ReturnT<String> pause(int id) {
 		return xxlJobService.stop(id);
 	}
-	
+
+	@PermissionLimit(limit = false)
 	@RequestMapping("/start")
 	@ResponseBody
 	public ReturnT<String> start(int id) {
 		return xxlJobService.start(id);
 	}
-	
+
+	@PermissionLimit(limit = false)
 	@RequestMapping("/trigger")
 	@ResponseBody
 	//@PermissionLimit(limit = false)
@@ -150,6 +159,7 @@ public class JobInfoController {
 		return ReturnT.SUCCESS;
 	}
 
+	@PermissionLimit(limit = false)
 	@RequestMapping("/nextTriggerTime")
 	@ResponseBody
 	public ReturnT<List<String>> nextTriggerTime(String scheduleType, String scheduleConf) {
