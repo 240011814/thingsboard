@@ -74,6 +74,7 @@ public class EntityKeyMapping {
     public static final String ADDITIONAL_INFO = "additionalInfo";
     public static final String RELATED_PARENT_ID = "parentId";
 
+    public static final List<String> alarmEntityFields = Arrays.asList(CREATED_TIME, ENTITY_TYPE, NAME, TYPE, "status");
     public static final List<String> typedEntityFields = Arrays.asList(CREATED_TIME, ENTITY_TYPE, NAME, TYPE, ADDITIONAL_INFO);
     public static final List<String> widgetEntityFields = Arrays.asList(CREATED_TIME, ENTITY_TYPE, NAME);
     public static final List<String> commonEntityFields = Arrays.asList(CREATED_TIME, ENTITY_TYPE, NAME, ADDITIONAL_INFO);
@@ -90,6 +91,7 @@ public class EntityKeyMapping {
         allowedEntityFieldMap.put(EntityType.DEVICE, new HashSet<>(deviceEntityFields));
         allowedEntityFieldMap.put(EntityType.ASSET, new HashSet<>(labeledEntityFields));
         allowedEntityFieldMap.put(EntityType.ENTITY_VIEW, new HashSet<>(typedEntityFields));
+        allowedEntityFieldMap.put(EntityType.ALARM, new HashSet<>(alarmEntityFields));
 
         allowedEntityFieldMap.put(EntityType.TENANT, new HashSet<>(contactBasedEntityFields));
         allowedEntityFieldMap.get(EntityType.TENANT).add(REGION);
@@ -108,6 +110,7 @@ public class EntityKeyMapping {
         entityFieldColumnMap.put(ENTITY_TYPE, ModelConstants.ENTITY_TYPE_PROPERTY);
         entityFieldColumnMap.put(REGION, ModelConstants.TENANT_REGION_PROPERTY);
         entityFieldColumnMap.put(NAME, "name");
+        entityFieldColumnMap.put("status", "status");
         entityFieldColumnMap.put(TYPE, "type");
         entityFieldColumnMap.put(LABEL, "label");
         entityFieldColumnMap.put("deviceProfileId", "device_profile_id");
