@@ -1,5 +1,5 @@
 /**
- * Copyright © 2016-2022 The Thingsboard Authors
+ * Copyright © 2016-2023 The Thingsboard Authors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -35,11 +35,13 @@ import org.springframework.http.HttpMethod;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.client.HttpComponentsAsyncClientHttpRequestFactory;
 import org.springframework.http.client.Netty4ClientHttpRequestFactory;
-import org.springframework.util.StringUtils;
+import org.thingsboard.server.common.data.StringUtils;
 import org.springframework.util.concurrent.ListenableFuture;
 import org.springframework.util.concurrent.ListenableFutureCallback;
 import org.springframework.web.client.AsyncRestTemplate;
-import org.springframework.web.client.HttpClientErrorException;
+import org.springframework.web.client.RestClientResponseException;
+import org.springframework.web.util.UriComponentsBuilder;
+import org.thingsboard.common.util.JacksonUtil;
 import org.thingsboard.rule.engine.api.TbContext;
 import org.thingsboard.rule.engine.api.TbNodeException;
 import org.thingsboard.rule.engine.api.TbRelationTypes;
@@ -54,11 +56,15 @@ import javax.net.ssl.SSLContext;
 import javax.net.ssl.SSLException;
 import java.net.Authenticator;
 import java.net.PasswordAuthentication;
+import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.security.NoSuchAlgorithmException;
 import java.util.Deque;
+import java.util.List;
+import java.util.Map;
 import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.concurrent.TimeUnit;
+import java.util.function.BiConsumer;
 
 @Data
 @Slf4j
@@ -189,8 +195,9 @@ public class TbHttpClient {
             entity = new HttpEntity<>(msg.getData(), headers);
         }
 
+        URI uri = buildEncodedUri(endpointUrl);
         ListenableFuture<ResponseEntity<String>> future = httpClient.exchange(
-                endpointUrl, method, entity, String.class);
+                uri, method, entity, String.class);
         future.addCallback(new ListenableFutureCallback<ResponseEntity<String>>() {
             @Override
             public void onFailure(Throwable throwable) {
@@ -214,14 +221,51 @@ public class TbHttpClient {
         }
     }
 
+    public URI buildEncodedUri(String endpointUrl) {
+        if (endpointUrl == null) {
+            throw new RuntimeException("Url string cannot be null!");
+        }
+        if (endpointUrl.isEmpty()) {
+            throw new RuntimeException("Url string cannot be empty!");
+        }
+
+        URI uri = UriComponentsBuilder.fromUriString(endpointUrl).build().encode().toUri();
+        if (uri.getScheme() == null || uri.getScheme().isEmpty()) {
+            throw new RuntimeException("Transport scheme(protocol) must be provided!");
+        }
+
+        boolean authorityNotValid = uri.getAuthority() == null || uri.getAuthority().isEmpty();
+        boolean hostNotValid = uri.getHost() == null || uri.getHost().isEmpty();
+        if (authorityNotValid || hostNotValid) {
+            throw new RuntimeException("Url string is invalid!");
+        }
+
+        return uri;
+    }
+
     private TbMsg processResponse(TbContext ctx, TbMsg origMsg, ResponseEntity<String> response) {
         TbMsgMetaData metaData = origMsg.getMetaData();
         metaData.putValue(STATUS, response.getStatusCode().name());
         metaData.putValue(STATUS_CODE, response.getStatusCode().value() + "");
         metaData.putValue(STATUS_REASON, response.getStatusCode().getReasonPhrase());
-        response.getHeaders().toSingleValueMap().forEach(metaData::putValue);
+        headersToMetaData(response.getHeaders(), metaData::putValue);
         String body = response.getBody() == null ? "{}" : response.getBody();
         return ctx.transformMsg(origMsg, origMsg.getType(), origMsg.getOriginator(), metaData, body);
+    }
+
+    void headersToMetaData(Map<String, List<String>> headers, BiConsumer<String, String> consumer) {
+        if (headers == null) {
+            return;
+        }
+        headers.forEach((key, values) -> {
+            if (values != null && !values.isEmpty()) {
+                if (values.size() == 1) {
+                    consumer.accept(key, values.get(0));
+                } else {
+                    consumer.accept(key, JacksonUtil.toString(values));
+                }
+            }
+        });
     }
 
     private TbMsg processFailureResponse(TbContext ctx, TbMsg origMsg, ResponseEntity<String> response) {
@@ -230,17 +274,18 @@ public class TbHttpClient {
         metaData.putValue(STATUS_CODE, response.getStatusCode().value() + "");
         metaData.putValue(STATUS_REASON, response.getStatusCode().getReasonPhrase());
         metaData.putValue(ERROR_BODY, response.getBody());
+        headersToMetaData(response.getHeaders(), metaData::putValue);
         return ctx.transformMsg(origMsg, origMsg.getType(), origMsg.getOriginator(), metaData, origMsg.getData());
     }
 
     private TbMsg processException(TbContext ctx, TbMsg origMsg, Throwable e) {
         TbMsgMetaData metaData = origMsg.getMetaData();
         metaData.putValue(ERROR, e.getClass() + ": " + e.getMessage());
-        if (e instanceof HttpClientErrorException) {
-            HttpClientErrorException httpClientErrorException = (HttpClientErrorException) e;
-            metaData.putValue(STATUS, httpClientErrorException.getStatusText());
-            metaData.putValue(STATUS_CODE, httpClientErrorException.getRawStatusCode() + "");
-            metaData.putValue(ERROR_BODY, httpClientErrorException.getResponseBodyAsString());
+        if (e instanceof RestClientResponseException) {
+            RestClientResponseException restClientResponseException = (RestClientResponseException) e;
+            metaData.putValue(STATUS, restClientResponseException.getStatusText());
+            metaData.putValue(STATUS_CODE, restClientResponseException.getRawStatusCode() + "");
+            metaData.putValue(ERROR_BODY, restClientResponseException.getResponseBodyAsString());
         }
         return ctx.transformMsg(origMsg, origMsg.getType(), origMsg.getOriginator(), metaData, origMsg.getData());
     }

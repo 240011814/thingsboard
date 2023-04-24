@@ -1,5 +1,5 @@
 /**
- * Copyright © 2016-2022 The Thingsboard Authors
+ * Copyright © 2016-2023 The Thingsboard Authors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,15 +20,17 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
-import org.springframework.data.repository.CrudRepository;
+import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.util.StringUtils;
 import org.thingsboard.server.common.data.Device;
+import org.thingsboard.server.common.data.DeviceIdInfo;
 import org.thingsboard.server.common.data.DeviceInfo;
 import org.thingsboard.server.common.data.DeviceTransportType;
 import org.thingsboard.server.common.data.EntitySubtype;
 import org.thingsboard.server.common.data.EntityType;
+import org.thingsboard.server.common.data.StringUtils;
+import org.thingsboard.server.common.data.id.DeviceId;
 import org.thingsboard.server.common.data.id.TenantId;
 import org.thingsboard.server.common.data.ota.OtaPackageType;
 import org.thingsboard.server.common.data.ota.OtaPackageUtil;
@@ -39,6 +41,7 @@ import org.thingsboard.server.dao.device.DeviceDao;
 import org.thingsboard.server.dao.model.sql.DeviceEntity;
 import org.thingsboard.server.dao.model.sql.DeviceInfoEntity;
 import org.thingsboard.server.dao.sql.JpaAbstractSearchTextDao;
+import org.thingsboard.server.dao.util.SqlDao;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -51,11 +54,15 @@ import java.util.UUID;
  * Created by Valerii Sosliuk on 5/6/2017.
  */
 @Component
+@SqlDao
 @Slf4j
 public class JpaDeviceDao extends JpaAbstractSearchTextDao<DeviceEntity, Device> implements DeviceDao {
 
     @Autowired
     private DeviceRepository deviceRepository;
+
+    @Autowired
+    private NativeDeviceRepository nativeDeviceRepository;
 
     @Override
     protected Class<DeviceEntity> getEntityClass() {
@@ -63,7 +70,7 @@ public class JpaDeviceDao extends JpaAbstractSearchTextDao<DeviceEntity, Device>
     }
 
     @Override
-    protected CrudRepository<DeviceEntity, UUID> getCrudRepository() {
+    protected JpaRepository<DeviceEntity, UUID> getRepository() {
         return deviceRepository;
     }
 
@@ -108,6 +115,16 @@ public class JpaDeviceDao extends JpaAbstractSearchTextDao<DeviceEntity, Device>
     @Override
     public ListenableFuture<List<Device>> findDevicesByTenantIdAndIdsAsync(UUID tenantId, List<UUID> deviceIds) {
         return service.submit(() -> DaoUtil.convertDataList(deviceRepository.findDevicesByTenantIdAndIdIn(tenantId, deviceIds)));
+    }
+
+    @Override
+    public List<Device> findDevicesByIds(List<UUID> deviceIds) {
+        return DaoUtil.convertDataList(deviceRepository.findDevicesByIdIn(deviceIds));
+    }
+
+    @Override
+    public ListenableFuture<List<Device>> findDevicesByIdsAsync(List<UUID> deviceIds) {
+        return service.submit(() -> findDevicesByIds(deviceIds));
     }
 
     @Override
@@ -302,4 +319,37 @@ public class JpaDeviceDao extends JpaAbstractSearchTextDao<DeviceEntity, Device>
                         Objects.toString(pageLink.getTextSearch(), ""),
                         DaoUtil.toPageable(pageLink)));
     }
+
+    @Override
+    public PageData<DeviceIdInfo> findDeviceIdInfos(PageLink pageLink) {
+        log.debug("Try to find tenant device id infos by pageLink [{}]", pageLink);
+        return nativeDeviceRepository.findDeviceIdInfos(DaoUtil.toPageable(pageLink));
+    }
+
+    @Override
+    public Device findByTenantIdAndExternalId(UUID tenantId, UUID externalId) {
+        return DaoUtil.getData(deviceRepository.findByTenantIdAndExternalId(tenantId, externalId));
+    }
+
+    @Override
+    public Device findByTenantIdAndName(UUID tenantId, String name) {
+        return findDeviceByTenantIdAndName(tenantId, name).orElse(null);
+    }
+
+    @Override
+    public PageData<Device> findByTenantId(UUID tenantId, PageLink pageLink) {
+        return findDevicesByTenantId(tenantId, pageLink);
+    }
+
+    @Override
+    public DeviceId getExternalIdByInternal(DeviceId internalId) {
+        return Optional.ofNullable(deviceRepository.getExternalIdById(internalId.getId()))
+                .map(DeviceId::new).orElse(null);
+    }
+
+    @Override
+    public EntityType getEntityType() {
+        return EntityType.DEVICE;
+    }
+
 }

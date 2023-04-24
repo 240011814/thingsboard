@@ -1,5 +1,5 @@
 ///
-/// Copyright © 2016-2022 The Thingsboard Authors
+/// Copyright © 2016-2023 The Thingsboard Authors
 ///
 /// Licensed under the Apache License, Version 2.0 (the "License");
 /// you may not use this file except in compliance with the License.
@@ -19,17 +19,17 @@ import { PageComponent } from '@shared/components/page.component';
 import { WidgetContext } from '@home/models/widget-component.models';
 import { Store } from '@ngrx/store';
 import { AppState } from '@core/core.state';
-import { DatasourceData } from '@shared/models/widget.models';
+import { DatasourceData, FormattedData } from '@shared/models/widget.models';
 import { DataKeyType } from '@shared/models/telemetry/telemetry.models';
 import {
-  fillPattern, flatData,
-  parseData,
+  createLabelFromPattern,
+  flatDataWithoutOverride,
+  formattedDataFormDatasourceData,
+  hashCode, isDefinedAndNotNull,
+  isNotEmptyStr,
   parseFunction,
-  processPattern,
   safeExecute
-} from '@home/components/widget/lib/maps/common-maps-utils';
-import { FormattedData } from '@home/components/widget/lib/maps/map-models';
-import { hashCode, isNotEmptyStr } from '@core/utils';
+} from '@core/utils';
 import cssjs from '@core/css/css';
 import { UtilsService } from '@core/services/utils.service';
 import { HOME_COMPONENTS_MODULE_TOKEN } from '@home/components/tokens';
@@ -42,7 +42,7 @@ interface MarkdownWidgetSettings {
   markdownCss: string;
 }
 
-type MarkdownTextFunction = (data: FormattedData[]) => string;
+type MarkdownTextFunction = (data: FormattedData[], ctx: WidgetContext) => string;
 
 @Component({
   selector: 'tb-markdown-widget ',
@@ -72,7 +72,8 @@ export class MarkdownWidgetComponent extends PageComponent implements OnInit {
   ngOnInit(): void {
     this.ctx.$scope.markdownWidget = this;
     this.settings = this.ctx.settings;
-    this.markdownTextFunction = this.settings.useMarkdownTextFunction ? parseFunction(this.settings.markdownTextFunction, ['data']) : null;
+    this.markdownTextFunction = this.settings.useMarkdownTextFunction ?
+      parseFunction(this.settings.markdownTextFunction, ['data', 'ctx']) : null;
     this.markdownClass = 'markdown-widget';
     const cssString = this.settings.markdownCss;
     if (isNotEmptyStr(cssString)) {
@@ -82,9 +83,11 @@ export class MarkdownWidgetComponent extends PageComponent implements OnInit {
       cssParser.cssPreviewNamespace = this.markdownClass;
       cssParser.createStyleElement(this.markdownClass, cssString);
     }
+    const pageSize = isDefinedAndNotNull(this.ctx.widgetConfig.pageSize) &&
+                      this.ctx.widgetConfig.pageSize > 0 ? this.ctx.widgetConfig.pageSize : 16384;
     const pageLink: EntityDataPageLink = {
       page: 0,
-      pageSize: 16384,
+      pageSize,
       textSearch: null,
       dynamic: true
     };
@@ -113,12 +116,11 @@ export class MarkdownWidgetComponent extends PageComponent implements OnInit {
     } else {
       initialData = [];
     }
-    const data = parseData(initialData);
+    const data = formattedDataFormDatasourceData(initialData);
     let markdownText = this.settings.useMarkdownTextFunction ?
-      safeExecute(this.markdownTextFunction, [data]) : this.settings.markdownTextPattern;
-    const allData = flatData(data);
-    const replaceInfo = processPattern(markdownText, allData);
-    markdownText = fillPattern(markdownText, replaceInfo, allData);
+      safeExecute(this.markdownTextFunction, [data, this.ctx]) : this.settings.markdownTextPattern;
+    const allData: FormattedData = flatDataWithoutOverride(data);
+    markdownText = createLabelFromPattern(markdownText, allData);
     if (this.markdownText !== markdownText) {
       this.markdownText = this.utils.customTranslation(markdownText, markdownText);
       this.cd.detectChanges();

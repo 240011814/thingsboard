@@ -1,5 +1,5 @@
 /**
- * Copyright © 2016-2022 The Thingsboard Authors
+ * Copyright © 2016-2023 The Thingsboard Authors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -64,6 +64,9 @@ public class RuleNodeEntity extends BaseSqlEntity<RuleNode> implements SearchTex
     @Column(name = ModelConstants.DEBUG_MODE)
     private boolean debugMode;
 
+    @Column(name = ModelConstants.EXTERNAL_ID_PROPERTY)
+    private UUID externalId;
+
     public RuleNodeEntity() {
     }
 
@@ -81,6 +84,9 @@ public class RuleNodeEntity extends BaseSqlEntity<RuleNode> implements SearchTex
         this.searchText = ruleNode.getName();
         this.configuration = ruleNode.getConfiguration();
         this.additionalInfo = ruleNode.getAdditionalInfo();
+        if (ruleNode.getExternalId() != null) {
+            this.externalId = ruleNode.getExternalId().getId();
+        }
     }
 
     @Override
@@ -105,6 +111,9 @@ public class RuleNodeEntity extends BaseSqlEntity<RuleNode> implements SearchTex
         ruleNode.setDebugMode(debugMode);
         ruleNode.setConfiguration(configuration);
         ruleNode.setAdditionalInfo(additionalInfo);
+        if (externalId != null) {
+            ruleNode.setExternalId(new RuleNodeId(externalId));
+        }
         return ruleNode;
     }
 }

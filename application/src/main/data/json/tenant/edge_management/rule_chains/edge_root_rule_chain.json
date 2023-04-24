@@ -70,7 +70,9 @@
         "name": "Log RPC from Device",
         "debugMode": false,
         "configuration": {
-          "jsScript": "return '\\nIncoming message:\\n' + JSON.stringify(msg) + '\\nIncoming metadata:\\n' + JSON.stringify(metadata);"
+          "scriptLang": "TBEL",
+          "jsScript": "return '\\nIncoming message:\\n' + JSON.stringify(msg) + '\\nIncoming metadata:\\n' + JSON.stringify(metadata);",
+          "tbelScript": "return '\\nIncoming message:\\n' + JSON.stringify(msg) + '\\nIncoming metadata:\\n' + JSON.stringify(metadata);"
         }
       },
       {
@@ -82,7 +84,9 @@
         "name": "Log Other",
         "debugMode": false,
         "configuration": {
-          "jsScript": "return '\\nIncoming message:\\n' + JSON.stringify(msg) + '\\nIncoming metadata:\\n' + JSON.stringify(metadata);"
+          "scriptLang": "TBEL",
+          "jsScript": "return '\\nIncoming message:\\n' + JSON.stringify(msg) + '\\nIncoming metadata:\\n' + JSON.stringify(metadata);",
+          "tbelScript": "return '\\nIncoming message:\\n' + JSON.stringify(msg) + '\\nIncoming metadata:\\n' + JSON.stringify(metadata);"
         }
       },
       {
@@ -157,9 +161,19 @@
         "type": "Attributes Updated"
       },
       {
-        "fromIndex": 4,
+        "fromIndex": 3,
         "toIndex": 7,
-        "type": "Success"
+        "type": "Attributes Deleted"
+      },
+      {
+        "fromIndex": 3,
+        "toIndex": 7,
+        "type": "Timeseries Deleted"
+      },
+      {
+        "fromIndex": 3,
+        "toIndex": 7,
+        "type": "Timeseries Updated"
       }
     ],
     "ruleChainConnections": null

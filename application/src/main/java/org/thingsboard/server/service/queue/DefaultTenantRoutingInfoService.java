@@ -1,5 +1,5 @@
 /**
- * Copyright © 2016-2022 The Thingsboard Authors
+ * Copyright © 2016-2023 The Thingsboard Authors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -42,10 +42,9 @@ public class DefaultTenantRoutingInfoService implements TenantRoutingInfoService
 
     @Override
     public TenantRoutingInfo getRoutingInfo(TenantId tenantId) {
-        Tenant tenant = tenantService.findTenantById(tenantId);
-        if (tenant != null) {
-            TenantProfile tenantProfile = tenantProfileCache.get(tenant.getTenantProfileId());
-            return new TenantRoutingInfo(tenantId, tenantProfile.isIsolatedTbCore(), tenantProfile.isIsolatedTbRuleEngine());
+        TenantProfile tenantProfile = tenantProfileCache.get(tenantId);
+        if (tenantProfile != null) {
+            return new TenantRoutingInfo(tenantId, tenantProfile.isIsolatedTbRuleEngine());
         } else {
             throw new RuntimeException("Tenant not found!");
         }

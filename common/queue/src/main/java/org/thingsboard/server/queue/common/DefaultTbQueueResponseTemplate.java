@@ -1,5 +1,5 @@
 /**
- * Copyright © 2016-2022 The Thingsboard Authors
+ * Copyright © 2016-2023 The Thingsboard Authors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -97,8 +97,8 @@ public class DefaultTbQueueResponseTemplate<Request extends TbQueueMsg, Response
 
                     requests.forEach(request -> {
                         long currentTime = System.currentTimeMillis();
-                        long requestTime = bytesToLong(request.getHeaders().get(REQUEST_TIME));
-                        if (requestTime + requestTimeout >= currentTime) {
+                        long expireTs = bytesToLong(request.getHeaders().get(EXPIRE_TS_HEADER));
+                        if (expireTs >= currentTime) {
                             byte[] requestIdHeader = request.getHeaders().get(REQUEST_ID_HEADER);
                             if (requestIdHeader == null) {
                                 log.error("[{}] Missing requestId in header", request);

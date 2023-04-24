@@ -1,5 +1,5 @@
 ///
-/// Copyright © 2016-2022 The Thingsboard Authors
+/// Copyright © 2016-2023 The Thingsboard Authors
 ///
 /// Licensed under the Apache License, Version 2.0 (the "License");
 /// you may not use this file except in compliance with the License.
@@ -70,9 +70,6 @@ export enum ImportEntityColumnType {
   secret = 'SECRET'
 }
 
-export const importEntityObjectColumns =
-  [ImportEntityColumnType.name, ImportEntityColumnType.type, ImportEntityColumnType.accessToken];
-
 export const importEntityColumnTypeTranslations = new Map<ImportEntityColumnType, string>(
   [
     [ImportEntityColumnType.name, 'import.column-type.name'],
@@ -137,6 +134,11 @@ export interface FileType {
   mimeType: string;
   extension: string;
 }
+
+export const TEXT_TYPE: FileType = {
+  mimeType: 'text/plain',
+  extension: 'txt'
+};
 
 export const JSON_TYPE: FileType = {
   mimeType: 'text/json',

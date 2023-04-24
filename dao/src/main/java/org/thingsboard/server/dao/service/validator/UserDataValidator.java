@@ -1,5 +1,5 @@
 /**
- * Copyright © 2016-2022 The Thingsboard Authors
+ * Copyright © 2016-2023 The Thingsboard Authors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,13 +15,13 @@
  */
 package org.thingsboard.server.dao.service.validator;
 
-import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Component;
 import org.thingsboard.server.common.data.Customer;
+import org.thingsboard.server.common.data.Device;
 import org.thingsboard.server.common.data.EntityType;
-import org.thingsboard.server.common.data.Tenant;
+import org.thingsboard.server.common.data.StringUtils;
 import org.thingsboard.server.common.data.User;
 import org.thingsboard.server.common.data.id.CustomerId;
 import org.thingsboard.server.common.data.id.TenantId;
@@ -32,7 +32,7 @@ import org.thingsboard.server.dao.exception.DataValidationException;
 import org.thingsboard.server.dao.model.ModelConstants;
 import org.thingsboard.server.dao.service.DataValidator;
 import org.thingsboard.server.dao.tenant.TbTenantProfileCache;
-import org.thingsboard.server.dao.tenant.TenantDao;
+import org.thingsboard.server.dao.tenant.TenantService;
 import org.thingsboard.server.dao.user.UserDao;
 import org.thingsboard.server.dao.user.UserService;
 
@@ -47,14 +47,15 @@ public class UserDataValidator extends DataValidator<User> {
     private UserService userService;
 
     @Autowired
-    private TenantDao tenantDao;
-
-    @Autowired
     private CustomerDao customerDao;
 
     @Autowired
     @Lazy
     private TbTenantProfileCache tenantProfileCache;
+
+    @Autowired
+    @Lazy
+    private TenantService tenantService;
 
     @Override
     protected void validateCreate(TenantId tenantId, User user) {
@@ -64,6 +65,24 @@ public class UserDataValidator extends DataValidator<User> {
             long maxUsers = profileConfiguration.getMaxUsers();
             validateNumberOfEntitiesPerTenant(tenantId, userDao, maxUsers, EntityType.USER);
         }
+    }
+
+    @Override
+    protected User validateUpdate(TenantId tenantId, User user) {
+        User old = userDao.findById(user.getTenantId(), user.getId().getId());
+        if (old == null) {
+            throw new DataValidationException("Can't update non existing user!");
+        }
+        if (!old.getTenantId().equals(user.getTenantId())) {
+            throw new DataValidationException("Can't update user tenant id!");
+        }
+        if (!old.getAuthority().equals(user.getAuthority())) {
+            throw new DataValidationException("Can't update user authority!");
+        }
+        if (!old.getCustomerId().equals(user.getCustomerId())) {
+            throw new DataValidationException("Can't update user customer id!");
+        }
+        return old;
     }
 
     @Override
@@ -119,8 +138,7 @@ public class UserDataValidator extends DataValidator<User> {
                     + " already present in database!");
         }
         if (!tenantId.getId().equals(ModelConstants.NULL_UUID)) {
-            Tenant tenant = tenantDao.findById(tenantId, user.getTenantId().getId());
-            if (tenant == null) {
+            if (!tenantService.tenantExists(user.getTenantId())) {
                 throw new DataValidationException("User is referencing to non-existent tenant!");
             }
         }

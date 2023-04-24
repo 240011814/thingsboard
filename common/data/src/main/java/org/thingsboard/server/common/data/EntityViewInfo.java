@@ -1,5 +1,5 @@
 /**
- * Copyright © 2016-2022 The Thingsboard Authors
+ * Copyright © 2016-2023 The Thingsboard Authors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,9 +22,9 @@ import org.thingsboard.server.common.data.id.EntityViewId;
 @Data
 public class EntityViewInfo extends EntityView {
 
-    @ApiModelProperty(position = 12, value = "Title of the Customer that owns the entity view.", readOnly = true)
+    @ApiModelProperty(position = 12, value = "Title of the Customer that owns the entity view.", accessMode = ApiModelProperty.AccessMode.READ_ONLY)
     private String customerTitle;
-    @ApiModelProperty(position = 13, value = "Indicates special 'Public' Customer that is auto-generated to use the entity view on public dashboards.", readOnly = true)
+    @ApiModelProperty(position = 13, value = "Indicates special 'Public' Customer that is auto-generated to use the entity view on public dashboards.", accessMode = ApiModelProperty.AccessMode.READ_ONLY)
     private boolean customerIsPublic;
 
     public EntityViewInfo() {

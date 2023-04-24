@@ -1,5 +1,5 @@
 /**
- * Copyright © 2016-2022 The Thingsboard Authors
+ * Copyright © 2016-2023 The Thingsboard Authors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -13,48 +13,46 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-:host {
-  .mat-chip.mat-standard-chip {
-    overflow: hidden;
+.mat-chip.mat-standard-chip.tb-datakey-chip {
+  overflow: hidden;
 
-    .tb-attribute-chip {
-      max-width: 100%;
-      color: rgb(66, 66, 66);
-      font-weight: normal;
-      font-size: 16px;
+  .tb-attribute-chip {
+    max-width: 100%;
+    color: rgb(66, 66, 66);
+    font-weight: normal;
+    font-size: 16px;
 
-      .tb-chip-drag-handle {
-        cursor: move;
+    .tb-chip-drag-handle {
+      cursor: move;
 
-        mat-icon {
-          pointer-events: none;
-        }
+      mat-icon {
+        pointer-events: none;
+      }
+    }
+
+    .tb-chip-labels {
+      display: flex;
+      flex-direction: row;
+      align-items: flex-end;
+      min-width: 0;
+      .tb-chip-label {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
       }
 
-      .tb-chip-labels {
-        display: flex;
-        flex-direction: row;
-        align-items: flex-end;
-        min-width: 0;
-        .tb-chip-label {
-          overflow: hidden;
-          text-overflow: ellipsis;
-          white-space: nowrap;
-        }
-
-        .tb-chip-separator {
-          white-space: pre;
-        }
+      .tb-chip-separator {
+        white-space: pre;
       }
+    }
 
-      .mat-chip-remove.mat-icon {
-        width: 24px;
-        height: 24px;
-        font-size: 24px;
-        margin-left: 0;
-        color: inherit;
-        opacity: inherit;
-      }
+    .mat-chip-remove.mat-icon {
+      width: 24px;
+      height: 24px;
+      font-size: 24px;
+      margin-left: 0;
+      color: inherit;
+      opacity: inherit;
     }
   }
 }
@@ -64,6 +62,13 @@
     padding-top: 0;
     .mat-form-field-infix {
       border-top: 0;
+    }
+  }
+
+  .tb-chip-label {
+    .tb-agg-func {
+      font-style: italic;
+      color: #0c959c;
     }
   }
 }

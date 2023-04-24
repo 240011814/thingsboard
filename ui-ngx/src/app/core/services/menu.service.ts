@@ -1,5 +1,5 @@
 ///
-/// Copyright © 2016-2022 The Thingsboard Authors
+/// Copyright © 2016-2023 The Thingsboard Authors
 ///
 /// Licensed under the Apache License, Version 2.0 (the "License");
 /// you may not use this file except in compliance with the License.
@@ -108,7 +108,7 @@ export class MenuService {
         name: 'admin.system-settings',
         type: 'toggle',
         path: '/settings',
-        height: '240px',
+        height: '320px',
         icon: 'settings',
         pages: [
           {
@@ -148,11 +148,26 @@ export class MenuService {
           },
           {
             id: guid(),
+            name: 'admin.2fa.2fa',
+            type: 'link',
+            path: '/settings/2fa',
+            icon: 'mdi:two-factor-authentication',
+            isMdiIcon: true
+          },
+          {
+            id: guid(),
             name: 'resource.resources-library',
             type: 'link',
             path: '/settings/resources-library',
             icon: 'folder'
-          }
+          },
+          {
+            id: guid(),
+            name: 'admin.queues',
+            type: 'link',
+            path: '/settings/queues',
+            icon: 'swap_calls'
+          },
         ]
       }
     );
@@ -217,10 +232,21 @@ export class MenuService {
             path: '/settings/oauth2'
           },
           {
+            name: 'admin.2fa.2fa',
+            icon: 'mdi:two-factor-authentication',
+            isMdiIcon: true,
+            path: '/settings/2fa'
+          },
+          {
             name: 'resource.resources-library',
             icon: 'folder',
             path: '/settings/resources-library'
-          }
+          },
+          {
+            name: 'admin.queues',
+            icon: 'swap_calls',
+            path: '/settings/queues'
+          },
         ]
       }
     );
@@ -267,11 +293,29 @@ export class MenuService {
       },
       {
         id: guid(),
-        name: 'device-profile.device-profiles',
-        type: 'link',
-        path: '/deviceProfiles',
-        icon: 'mdi:alpha-d-box',
-        isMdiIcon: true
+        name: 'profiles.profiles',
+        type: 'toggle',
+        path: '/profiles',
+        height: '80px',
+        icon: 'badge',
+        pages: [
+          {
+            id: guid(),
+            name: 'device-profile.device-profiles',
+            type: 'link',
+            path: '/profiles/deviceProfiles',
+            icon: 'mdi:alpha-d-box',
+            isMdiIcon: true
+          },
+          {
+            id: guid(),
+            name: 'asset-profile.asset-profiles',
+            type: 'link',
+            path: '/profiles/assetProfiles',
+            icon: 'mdi:alpha-a-box',
+            isMdiIcon: true
+          }
+        ]
       },
       {
         id: guid(),
@@ -333,6 +377,13 @@ export class MenuService {
       },
       {
         id: guid(),
+        name: 'version-control.version-control',
+        type: 'link',
+        path: '/vc',
+        icon: 'history'
+      },
+      {
+        id: guid(),
         name: 'audit-log.audit-logs',
         type: 'link',
         path: '/auditLogs',
@@ -350,7 +401,7 @@ export class MenuService {
         name: 'admin.system-settings',
         type: 'toggle',
         path: '/settings',
-        height: '80px',
+        height: '160px',
         icon: 'settings',
         pages: [
           {
@@ -366,6 +417,20 @@ export class MenuService {
             type: 'link',
             path: '/settings/resources-library',
             icon: 'folder'
+          },
+          {
+            id: guid(),
+            name: 'admin.repository-settings',
+            type: 'link',
+            path: '/settings/repository',
+            icon: 'manage_history'
+          },
+          {
+            id: guid(),
+            name: 'admin.auto-commit-settings',
+            type: 'link',
+            path: '/settings/auto-commit',
+            icon: 'settings_backup_restore'
           }
         ]
       }
@@ -403,6 +468,12 @@ export class MenuService {
             name: 'asset.assets',
             icon: 'domain',
             path: '/assets'
+          },
+          {
+            name: 'asset-profile.asset-profiles',
+            icon: 'mdi:alpha-a-box',
+            isMdiIcon: true,
+            path: '/profiles/assetProfiles'
           }
         ]
       },
@@ -418,7 +489,7 @@ export class MenuService {
             name: 'device-profile.device-profiles',
             icon: 'mdi:alpha-d-box',
             isMdiIcon: true,
-            path: '/deviceProfiles'
+            path: '/profiles/deviceProfiles'
           },
           {
             name: 'ota-update.ota-updates',
@@ -474,6 +545,16 @@ export class MenuService {
         ]
       },
       {
+        name: 'version-control.management',
+        places: [
+          {
+            name: 'version-control.version-control',
+            icon: 'history',
+            path: '/vc'
+          }
+        ]
+      },
+      {
         name: 'audit-log.audit',
         places: [
           {
@@ -500,6 +581,16 @@ export class MenuService {
             name: 'resource.resources-library',
             icon: 'folder',
             path: '/settings/resources-library'
+          },
+          {
+            name: 'admin.repository-settings',
+            icon: 'manage_history',
+            path: '/settings/repository',
+          },
+          {
+            name: 'admin.auto-commit-settings',
+            icon: 'settings_backup_restore',
+            path: '/settings/auto-commit'
           }
         ]
       }

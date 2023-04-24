@@ -1,5 +1,5 @@
 /**
- * Copyright © 2016-2022 The Thingsboard Authors
+ * Copyright © 2016-2023 The Thingsboard Authors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -31,6 +31,7 @@ import org.thingsboard.server.common.data.id.CustomerId;
 import org.thingsboard.server.common.data.id.EntityId;
 import org.thingsboard.server.common.data.id.TenantId;
 import org.thingsboard.server.common.data.validation.Length;
+import org.thingsboard.server.common.data.validation.NoXss;
 
 import java.util.List;
 
@@ -43,12 +44,13 @@ import java.util.List;
 @AllArgsConstructor
 public class Alarm extends BaseData<AlarmId> implements HasName, HasTenantId, HasCustomerId {
 
-    @ApiModelProperty(position = 3, value = "JSON object with Tenant Id", readOnly = true)
+    @ApiModelProperty(position = 3, value = "JSON object with Tenant Id", accessMode = ApiModelProperty.AccessMode.READ_ONLY)
     private TenantId tenantId;
 
-    @ApiModelProperty(position = 4, value = "JSON object with Customer Id", readOnly = true)
+    @ApiModelProperty(position = 4, value = "JSON object with Customer Id", accessMode = ApiModelProperty.AccessMode.READ_ONLY)
     private CustomerId customerId;
 
+    @NoXss
     @ApiModelProperty(position = 6, required = true, value = "representing type of the Alarm", example = "High Temperature Alarm")
     @Length(fieldName = "type")
     private String type;
@@ -124,7 +126,7 @@ public class Alarm extends BaseData<AlarmId> implements HasName, HasTenantId, Ha
     }
 
 
-    @ApiModelProperty(position = 2, value = "Timestamp of the alarm creation, in milliseconds", example = "1634058704567", readOnly = true)
+    @ApiModelProperty(position = 2, value = "Timestamp of the alarm creation, in milliseconds", example = "1634058704567", accessMode = ApiModelProperty.AccessMode.READ_ONLY)
     @Override
     public long getCreatedTime() {
         return super.getCreatedTime();

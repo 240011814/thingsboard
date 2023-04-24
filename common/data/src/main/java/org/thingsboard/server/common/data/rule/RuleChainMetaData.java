@@ -1,5 +1,5 @@
 /**
- * Copyright © 2016-2022 The Thingsboard Authors
+ * Copyright © 2016-2023 The Thingsboard Authors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -33,13 +33,12 @@ import java.util.Map;
 @Data
 public class RuleChainMetaData {
 
-    @ApiModelProperty(position = 1, required = true, value = "JSON object with Rule Chain Id.", readOnly = true)
+    @ApiModelProperty(position = 1, required = true, value = "JSON object with Rule Chain Id.", accessMode = ApiModelProperty.AccessMode.READ_ONLY)
     private RuleChainId ruleChainId;
 
     @ApiModelProperty(position = 2, required = true, value = "Index of the first rule node in the 'nodes' list")
     private Integer firstNodeIndex;
 
-    @Valid
     @ApiModelProperty(position = 3, required = true, value = "List of rule node JSON objects")
     private List<RuleNode> nodes;
 

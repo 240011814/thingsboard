@@ -1,5 +1,5 @@
 /**
- * Copyright © 2016-2022 The Thingsboard Authors
+ * Copyright © 2016-2023 The Thingsboard Authors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,18 +18,30 @@ package org.thingsboard.server.controller;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import org.apache.commons.lang3.RandomStringUtils;
+import org.junit.After;
 import org.junit.Assert;
 import org.junit.Test;
+import org.mockito.AdditionalAnswers;
+import org.mockito.Mockito;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Primary;
 import org.springframework.http.HttpHeaders;
+import org.springframework.test.context.ContextConfiguration;
+import org.springframework.test.web.servlet.ResultActions;
 import org.thingsboard.server.common.data.Customer;
+import org.thingsboard.server.common.data.StringUtils;
 import org.thingsboard.server.common.data.Tenant;
 import org.thingsboard.server.common.data.User;
+import org.thingsboard.server.common.data.audit.ActionType;
 import org.thingsboard.server.common.data.id.CustomerId;
 import org.thingsboard.server.common.data.id.TenantId;
+import org.thingsboard.server.common.data.id.UserId;
 import org.thingsboard.server.common.data.page.PageData;
 import org.thingsboard.server.common.data.page.PageLink;
 import org.thingsboard.server.common.data.security.Authority;
+import org.thingsboard.server.dao.exception.DataValidationException;
+import org.thingsboard.server.dao.user.UserDao;
 import org.thingsboard.server.service.mail.TestMailService;
 
 import java.util.ArrayList;
@@ -42,10 +54,30 @@ import static org.hamcrest.Matchers.is;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import static org.thingsboard.server.dao.model.ModelConstants.SYSTEM_TENANT;
 
+@ContextConfiguration(classes = {BaseUserControllerTest.Config.class})
 public abstract class BaseUserControllerTest extends AbstractControllerTest {
 
     private IdComparator<User> idComparator = new IdComparator<>();
+
+    private CustomerId customerNUULId = (CustomerId) createEntityId_NULL_UUID(new Customer());
+
+    @Autowired
+    private UserDao userDao;
+
+    static class Config {
+        @Bean
+        @Primary
+        public UserDao userDao(UserDao userDao) {
+            return Mockito.mock(UserDao.class, AdditionalAnswers.delegatesTo(userDao));
+        }
+    }
+
+    @After
+    public void afterTest() throws Exception {
+        loginSysAdmin();
+    }
 
     @Test
     public void testSaveUser() throws Exception {
@@ -58,6 +90,9 @@ public abstract class BaseUserControllerTest extends AbstractControllerTest {
         user.setEmail(email);
         user.setFirstName("Joe");
         user.setLastName("Downs");
+
+        Mockito.reset(tbClusterService, auditLogService);
+
         User savedUser = doPost("/api/user", user, User.class);
         Assert.assertNotNull(savedUser);
         Assert.assertNotNull(savedUser.getId());
@@ -67,7 +102,12 @@ public abstract class BaseUserControllerTest extends AbstractControllerTest {
         User foundUser = doGet("/api/user/" + savedUser.getId().getId().toString(), User.class);
         Assert.assertEquals(foundUser, savedUser);
 
-        logout();
+        testNotifyManyEntityManyTimeMsgToEdgeServiceEntityEqAny(foundUser, foundUser,
+                SYSTEM_TENANT, customerNUULId, null, SYS_ADMIN_EMAIL,
+                ActionType.ADDED, ActionType.ADDED, 1, 1, 1);
+        Mockito.reset(tbClusterService, auditLogService);
+
+        resetTokens();
         doGet("/api/noauth/activate?activateToken={activateToken}", TestMailService.currentActivateToken)
                 .andExpect(status().isSeeOther())
                 .andExpect(header().string(HttpHeaders.LOCATION, "/login/createPassword?activateToken=" + TestMailService.currentActivateToken));
@@ -84,7 +124,7 @@ public abstract class BaseUserControllerTest extends AbstractControllerTest {
                 .andExpect(jsonPath("$.authority", is(Authority.TENANT_ADMIN.name())))
                 .andExpect(jsonPath("$.email", is(email)));
 
-        logout();
+        resetTokens();
 
         login(email, "testPassword");
 
@@ -94,25 +134,51 @@ public abstract class BaseUserControllerTest extends AbstractControllerTest {
                 .andExpect(jsonPath("$.email", is(email)));
 
         loginSysAdmin();
+        foundUser = doGet("/api/user/" + savedUser.getId().getId().toString(), User.class);
+
+        Mockito.reset(tbClusterService, auditLogService);
+
         doDelete("/api/user/" + savedUser.getId().getId().toString())
                 .andExpect(status().isOk());
+
+        testNotifyEntityAllOneTimeLogEntityActionEntityEqClass(foundUser, foundUser.getId(), foundUser.getId(),
+                SYSTEM_TENANT, customerNUULId, null, SYS_ADMIN_EMAIL,
+                ActionType.DELETED, SYSTEM_TENANT.getId().toString());
     }
 
     @Test
     public void testSaveUserWithViolationOfFiledValidation() throws Exception {
         loginSysAdmin();
 
+        Mockito.reset(tbClusterService, auditLogService);
+
         String email = "tenant2@thingsboard.org";
         User user = new User();
         user.setAuthority(Authority.TENANT_ADMIN);
         user.setTenantId(tenantId);
         user.setEmail(email);
-        user.setFirstName(RandomStringUtils.randomAlphabetic(300));
+        user.setFirstName(StringUtils.randomAlphabetic(300));
         user.setLastName("Downs");
-        doPost("/api/user", user).andExpect(statusReason(containsString("Validation error: length of first name must be equal or less than 255")));
+        String msgError = msgErrorFieldLength("first name");
+        doPost("/api/user", user)
+                .andExpect(status().isBadRequest())
+                .andExpect(statusReason(containsString(msgError)));
+
+        testNotifyEntityEqualsOneTimeServiceNeverError(user,
+                SYSTEM_TENANT, null, SYS_ADMIN_EMAIL,
+                ActionType.ADDED, new DataValidationException(msgError));
+        Mockito.reset(tbClusterService, auditLogService);
+
         user.setFirstName("Normal name");
-        user.setLastName(RandomStringUtils.randomAlphabetic(300));
-        doPost("/api/user", user).andExpect(statusReason(containsString("length of last name must be equal or less than 255")));
+        msgError = msgErrorFieldLength("last name");
+        user.setLastName(StringUtils.randomAlphabetic(300));
+        doPost("/api/user", user)
+                .andExpect(status().isBadRequest())
+                .andExpect(statusReason(containsString(msgError)));
+
+        testNotifyEntityEqualsOneTimeServiceNeverError(user,
+                SYSTEM_TENANT, null, SYS_ADMIN_EMAIL,
+                ActionType.ADDED, new DataValidationException(msgError));
     }
 
     @Test
@@ -128,9 +194,16 @@ public abstract class BaseUserControllerTest extends AbstractControllerTest {
         tenantAdmin = createUserAndLogin(tenantAdmin, "testPassword1");
 
         loginDifferentTenant();
-        doPost("/api/user", tenantAdmin, User.class, status().isForbidden());
-        deleteDifferentTenant();
 
+        Mockito.reset(tbClusterService, auditLogService);
+
+        doPost("/api/user", tenantAdmin)
+                .andExpect(status().isForbidden())
+                .andExpect(statusReason(containsString(msgErrorPermission)));
+
+        testNotifyEntityNever(tenantAdmin.getId(), tenantAdmin);
+
+        deleteDifferentTenant();
     }
 
     @Test
@@ -146,7 +219,7 @@ public abstract class BaseUserControllerTest extends AbstractControllerTest {
         user.setLastName("Downs");
 
         User savedUser = createUserAndLogin(user, "testPassword1");
-        logout();
+        resetTokens();
 
         JsonNode resetPasswordByEmailRequest = new ObjectMapper().createObjectNode()
                 .put("email", email);
@@ -162,7 +235,9 @@ public abstract class BaseUserControllerTest extends AbstractControllerTest {
                 .put("resetToken", TestMailService.currentResetPasswordToken)
                 .put("password", "testPassword2");
 
-        JsonNode tokenInfo = readResponse(doPost("/api/noauth/resetPassword", resetPasswordRequest).andExpect(status().isOk()), JsonNode.class);
+        JsonNode tokenInfo = readResponse(
+                doPost("/api/noauth/resetPassword", resetPasswordRequest)
+                        .andExpect(status().isOk()), JsonNode.class);
         validateAndSetJwtToken(tokenInfo, email);
 
         doGet("/api/auth/user")
@@ -170,7 +245,7 @@ public abstract class BaseUserControllerTest extends AbstractControllerTest {
                 .andExpect(jsonPath("$.authority", is(Authority.TENANT_ADMIN.name())))
                 .andExpect(jsonPath("$.email", is(email)));
 
-        logout();
+        resetTokens();
 
         login(email, "testPassword2");
         doGet("/api/auth/user")
@@ -205,6 +280,8 @@ public abstract class BaseUserControllerTest extends AbstractControllerTest {
     public void testSaveUserWithSameEmail() throws Exception {
         loginSysAdmin();
 
+        Mockito.reset(tbClusterService, auditLogService);
+
         String email = TENANT_ADMIN_EMAIL;
         User user = new User();
         user.setAuthority(Authority.TENANT_ADMIN);
@@ -213,14 +290,21 @@ public abstract class BaseUserControllerTest extends AbstractControllerTest {
         user.setFirstName("Joe");
         user.setLastName("Downs");
 
+        String msgError = "User with email '" + email + "'  already present in database";
         doPost("/api/user", user)
                 .andExpect(status().isBadRequest())
-                .andExpect(statusReason(containsString("User with email '" + email + "'  already present in database")));
+                .andExpect(statusReason(containsString(msgError)));
+
+        testNotifyEntityEqualsOneTimeServiceNeverError(user,
+                SYSTEM_TENANT, null, SYS_ADMIN_EMAIL,
+                ActionType.ADDED, new DataValidationException(msgError));
     }
 
     @Test
     public void testSaveUserWithInvalidEmail() throws Exception {
         loginSysAdmin();
+
+        Mockito.reset(tbClusterService, auditLogService);
 
         String email = "tenant_thingsboard.org";
         User user = new User();
@@ -230,14 +314,21 @@ public abstract class BaseUserControllerTest extends AbstractControllerTest {
         user.setFirstName("Joe");
         user.setLastName("Downs");
 
+        String msgError = "Invalid email address format '" + email + "'";
         doPost("/api/user", user)
                 .andExpect(status().isBadRequest())
-                .andExpect(statusReason(containsString("Invalid email address format '" + email + "'")));
+                .andExpect(statusReason(containsString(msgError)));
+
+        testNotifyEntityEqualsOneTimeServiceNeverError(user,
+                SYSTEM_TENANT, null, SYS_ADMIN_EMAIL,
+                ActionType.ADDED, new DataValidationException(msgError));
     }
 
     @Test
     public void testSaveUserWithEmptyEmail() throws Exception {
         loginSysAdmin();
+
+        Mockito.reset(tbClusterService, auditLogService);
 
         User user = new User();
         user.setAuthority(Authority.TENANT_ADMIN);
@@ -245,14 +336,21 @@ public abstract class BaseUserControllerTest extends AbstractControllerTest {
         user.setFirstName("Joe");
         user.setLastName("Downs");
 
+        String msgError = "User email " + msgErrorShouldBeSpecified;
         doPost("/api/user", user)
                 .andExpect(status().isBadRequest())
-                .andExpect(statusReason(containsString("User email should be specified")));
+                .andExpect(statusReason(containsString("User email " + msgErrorShouldBeSpecified)));
+
+        testNotifyEntityEqualsOneTimeServiceNeverError(user,
+                SYSTEM_TENANT, null, SYS_ADMIN_EMAIL,
+                ActionType.ADDED, new DataValidationException(msgError));
     }
 
     @Test
     public void testSaveUserWithoutTenant() throws Exception {
         loginSysAdmin();
+
+        Mockito.reset(tbClusterService, auditLogService);
 
         User user = new User();
         user.setAuthority(Authority.TENANT_ADMIN);
@@ -260,9 +358,15 @@ public abstract class BaseUserControllerTest extends AbstractControllerTest {
         user.setFirstName("Joe");
         user.setLastName("Downs");
 
+        String msgError = "Tenant administrator should be assigned to tenant";
         doPost("/api/user", user)
                 .andExpect(status().isBadRequest())
-                .andExpect(statusReason(containsString("Tenant administrator should be assigned to tenant")));
+                .andExpect(statusReason(containsString(msgError)));
+
+        testNotifyEntityEqualsOneTimeServiceNeverError(user,
+                SYSTEM_TENANT, null, SYS_ADMIN_EMAIL,
+                ActionType.ADDED, new DataValidationException(msgError));
+
     }
 
     @Test
@@ -284,8 +388,10 @@ public abstract class BaseUserControllerTest extends AbstractControllerTest {
         doDelete("/api/user/" + savedUser.getId().getId().toString())
                 .andExpect(status().isOk());
 
-        doGet("/api/user/" + savedUser.getId().getId().toString())
-                .andExpect(status().isNotFound());
+        String userIdStr = savedUser.getId().getId().toString();
+        doGet("/api/user/" + userIdStr)
+                .andExpect(status().isNotFound())
+                .andExpect(statusReason(containsString( msgErrorNoFound("User",userIdStr))));
     }
 
     @Test
@@ -300,8 +406,11 @@ public abstract class BaseUserControllerTest extends AbstractControllerTest {
 
         TenantId tenantId = savedTenant.getId();
 
+        Mockito.reset(tbClusterService, auditLogService);
+
+        int cntEntity = 64;
         List<User> tenantAdmins = new ArrayList<>();
-        for (int i = 0; i < 64; i++) {
+        for (int i = 0; i < cntEntity; i++) {
             User user = new User();
             user.setAuthority(Authority.TENANT_ADMIN);
             user.setTenantId(tenantId);
@@ -309,12 +418,18 @@ public abstract class BaseUserControllerTest extends AbstractControllerTest {
             tenantAdmins.add(doPost("/api/user", user, User.class));
         }
 
+        User testManyUser = new User();
+        testManyUser.setTenantId(tenantId);
+        testNotifyManyEntityManyTimeMsgToEdgeServiceEntityEqAny(testManyUser, testManyUser,
+                SYSTEM_TENANT, customerNUULId, null, SYS_ADMIN_EMAIL,
+                ActionType.ADDED, ActionType.ADDED, cntEntity, cntEntity, cntEntity);
+
         List<User> loadedTenantAdmins = new ArrayList<>();
         PageLink pageLink = new PageLink(33);
         PageData<User> pageData = null;
         do {
             pageData = doGetTypedWithPageLink("/api/tenant/" + tenantId.getId().toString() + "/users?",
-                    new TypeReference<PageData<User>>() {
+                    new TypeReference<>() {
                     }, pageLink);
             loadedTenantAdmins.addAll(pageData.getData());
             if (pageData.hasNext()) {
@@ -333,7 +448,7 @@ public abstract class BaseUserControllerTest extends AbstractControllerTest {
 
         pageLink = new PageLink(33);
         pageData = doGetTypedWithPageLink("/api/tenant/" + tenantId.getId().toString() + "/users?",
-                new TypeReference<PageData<User>>() {
+                new TypeReference<>() {
                 }, pageLink);
         Assert.assertFalse(pageData.hasNext());
         Assert.assertTrue(pageData.getData().isEmpty());
@@ -347,11 +462,13 @@ public abstract class BaseUserControllerTest extends AbstractControllerTest {
         String email1 = "testEmail1";
         List<User> tenantAdminsEmail1 = new ArrayList<>();
 
-        for (int i = 0; i < 124; i++) {
+        final int NUMBER_OF_USERS = 124;
+
+        for (int i = 0; i < NUMBER_OF_USERS; i++) {
             User user = new User();
             user.setAuthority(Authority.TENANT_ADMIN);
             user.setTenantId(tenantId);
-            String suffix = RandomStringUtils.randomAlphanumeric((int) (5 + Math.random() * 10));
+            String suffix = StringUtils.randomAlphanumeric((int) (5 + Math.random() * 10));
             String email = email1 + suffix + "@thingsboard.org";
             email = i % 2 == 0 ? email.toLowerCase() : email.toUpperCase();
             user.setEmail(email);
@@ -365,7 +482,7 @@ public abstract class BaseUserControllerTest extends AbstractControllerTest {
             User user = new User();
             user.setAuthority(Authority.TENANT_ADMIN);
             user.setTenantId(tenantId);
-            String suffix = RandomStringUtils.randomAlphanumeric((int) (5 + Math.random() * 10));
+            String suffix = StringUtils.randomAlphanumeric((int) (5 + Math.random() * 10));
             String email = email2 + suffix + "@thingsboard.org";
             email = i % 2 == 0 ? email.toLowerCase() : email.toUpperCase();
             user.setEmail(email);
@@ -377,7 +494,7 @@ public abstract class BaseUserControllerTest extends AbstractControllerTest {
         PageData<User> pageData = null;
         do {
             pageData = doGetTypedWithPageLink("/api/tenant/" + tenantId.getId().toString() + "/users?",
-                    new TypeReference<PageData<User>>() {
+                    new TypeReference<>() {
                     }, pageLink);
             loadedTenantAdminsEmail1.addAll(pageData.getData());
             if (pageData.hasNext()) {
@@ -394,7 +511,7 @@ public abstract class BaseUserControllerTest extends AbstractControllerTest {
         pageLink = new PageLink(16, 0, email2);
         do {
             pageData = doGetTypedWithPageLink("/api/tenant/" + tenantId.getId().toString() + "/users?",
-                    new TypeReference<PageData<User>>() {
+                    new TypeReference<>() {
                     }, pageLink);
             loadedTenantAdminsEmail2.addAll(pageData.getData());
             if (pageData.hasNext()) {
@@ -407,14 +524,22 @@ public abstract class BaseUserControllerTest extends AbstractControllerTest {
 
         Assert.assertEquals(tenantAdminsEmail2, loadedTenantAdminsEmail2);
 
+        Mockito.reset(tbClusterService, auditLogService);
+
+        int cntEntity = loadedTenantAdminsEmail1.size();
         for (User user : loadedTenantAdminsEmail1) {
             doDelete("/api/user/" + user.getId().getId().toString())
                     .andExpect(status().isOk());
         }
+        User testManyUser = new User();
+        testManyUser.setTenantId(tenantId);
+        testNotifyManyEntityManyTimeMsgToEdgeServiceEntityEqAny(testManyUser, testManyUser,
+                SYSTEM_TENANT, customerNUULId, null, SYS_ADMIN_EMAIL,
+                ActionType.DELETED, ActionType.DELETED, cntEntity, NUMBER_OF_USERS, cntEntity, new String());
 
         pageLink = new PageLink(4, 0, email1);
         pageData = doGetTypedWithPageLink("/api/tenant/" + tenantId.getId().toString() + "/users?",
-                new TypeReference<PageData<User>>() {
+                new TypeReference<>() {
                 }, pageLink);
         Assert.assertFalse(pageData.hasNext());
         Assert.assertEquals(0, pageData.getData().size());
@@ -426,7 +551,7 @@ public abstract class BaseUserControllerTest extends AbstractControllerTest {
 
         pageLink = new PageLink(4, 0, email2);
         pageData = doGetTypedWithPageLink("/api/tenant/" + tenantId.getId().toString() + "/users?",
-                new TypeReference<PageData<User>>() {
+                new TypeReference<>() {
                 }, pageLink);
         Assert.assertFalse(pageData.hasNext());
         Assert.assertEquals(0, pageData.getData().size());
@@ -443,7 +568,7 @@ public abstract class BaseUserControllerTest extends AbstractControllerTest {
         tenantAdmin.setFirstName("Joe");
         tenantAdmin.setLastName("Downs");
 
-        tenantAdmin = createUserAndLogin(tenantAdmin, "testPassword1");
+        createUserAndLogin(tenantAdmin, "testPassword1");
 
         Customer customer = new Customer();
         customer.setTitle("My customer");
@@ -465,7 +590,7 @@ public abstract class BaseUserControllerTest extends AbstractControllerTest {
         PageData<User> pageData = null;
         do {
             pageData = doGetTypedWithPageLink("/api/customer/" + customerId.getId().toString() + "/users?",
-                    new TypeReference<PageData<User>>() {
+                    new TypeReference<>() {
                     }, pageLink);
             loadedCustomerUsers.addAll(pageData.getData());
             if (pageData.hasNext()) {
@@ -493,7 +618,7 @@ public abstract class BaseUserControllerTest extends AbstractControllerTest {
         tenantAdmin.setFirstName("Joe");
         tenantAdmin.setLastName("Downs");
 
-        tenantAdmin = createUserAndLogin(tenantAdmin, "testPassword1");
+        createUserAndLogin(tenantAdmin, "testPassword1");
 
         Customer customer = new Customer();
         customer.setTitle("My customer");
@@ -508,7 +633,7 @@ public abstract class BaseUserControllerTest extends AbstractControllerTest {
             User user = new User();
             user.setAuthority(Authority.CUSTOMER_USER);
             user.setCustomerId(customerId);
-            String suffix = RandomStringUtils.randomAlphanumeric((int) (5 + Math.random() * 10));
+            String suffix = StringUtils.randomAlphanumeric((int) (5 + Math.random() * 10));
             String email = email1 + suffix + "@thingsboard.org";
             email = i % 2 == 0 ? email.toLowerCase() : email.toUpperCase();
             user.setEmail(email);
@@ -522,7 +647,7 @@ public abstract class BaseUserControllerTest extends AbstractControllerTest {
             User user = new User();
             user.setAuthority(Authority.CUSTOMER_USER);
             user.setCustomerId(customerId);
-            String suffix = RandomStringUtils.randomAlphanumeric((int) (5 + Math.random() * 10));
+            String suffix = StringUtils.randomAlphanumeric((int) (5 + Math.random() * 10));
             String email = email2 + suffix + "@thingsboard.org";
             email = i % 2 == 0 ? email.toLowerCase() : email.toUpperCase();
             user.setEmail(email);
@@ -531,10 +656,10 @@ public abstract class BaseUserControllerTest extends AbstractControllerTest {
 
         List<User> loadedCustomerUsersEmail1 = new ArrayList<>();
         PageLink pageLink = new PageLink(33, 0, email1);
-        PageData<User> pageData = null;
+        PageData<User> pageData;
         do {
             pageData = doGetTypedWithPageLink("/api/customer/" + customerId.getId().toString() + "/users?",
-                    new TypeReference<PageData<User>>() {
+                    new TypeReference<>() {
                     }, pageLink);
             loadedCustomerUsersEmail1.addAll(pageData.getData());
             if (pageData.hasNext()) {
@@ -551,7 +676,7 @@ public abstract class BaseUserControllerTest extends AbstractControllerTest {
         pageLink = new PageLink(16, 0, email2);
         do {
             pageData = doGetTypedWithPageLink("/api/customer/" + customerId.getId().toString() + "/users?",
-                    new TypeReference<PageData<User>>() {
+                    new TypeReference<>() {
                     }, pageLink);
             loadedCustomerUsersEmail2.addAll(pageData.getData());
             if (pageData.hasNext()) {
@@ -571,7 +696,7 @@ public abstract class BaseUserControllerTest extends AbstractControllerTest {
 
         pageLink = new PageLink(4, 0, email1);
         pageData = doGetTypedWithPageLink("/api/customer/" + customerId.getId().toString() + "/users?",
-                new TypeReference<PageData<User>>() {
+                new TypeReference<>() {
                 }, pageLink);
         Assert.assertFalse(pageData.hasNext());
         Assert.assertEquals(0, pageData.getData().size());
@@ -583,7 +708,7 @@ public abstract class BaseUserControllerTest extends AbstractControllerTest {
 
         pageLink = new PageLink(4, 0, email2);
         pageData = doGetTypedWithPageLink("/api/customer/" + customerId.getId().toString() + "/users?",
-                new TypeReference<PageData<User>>() {
+                new TypeReference<>() {
                 }, pageLink);
         Assert.assertFalse(pageData.hasNext());
         Assert.assertEquals(0, pageData.getData().size());
@@ -592,4 +717,39 @@ public abstract class BaseUserControllerTest extends AbstractControllerTest {
                 .andExpect(status().isOk());
     }
 
+
+    @Test
+    public void testDeleteUserWithDeleteRelationsOk() throws Exception {
+        UserId userId = createUser().getId();
+        testEntityDaoWithRelationsOk(tenantId, userId, "/api/user/" + userId);
+    }
+
+    @Test
+    public void testDeleteUserExceptionWithRelationsTransactional() throws Exception {
+        UserId userId = createUser().getId();
+        testEntityDaoWithRelationsTransactionalException(userDao, tenantId, userId, "/api/user/" + userId);
+    }
+
+    @Test
+    public void givenInvalidPageLink_thenReturnError() throws Exception {
+        loginTenantAdmin();
+
+        String invalidSortProperty = "abc(abc)";
+
+        ResultActions result = doGet("/api/users?page={page}&pageSize={pageSize}&sortProperty={sortProperty}", 0, 100, invalidSortProperty)
+                .andExpect(status().isBadRequest());
+        assertThat(getErrorMessage(result)).containsIgnoringCase("invalid sort property");
+    }
+
+    private User createUser() throws Exception {
+        loginSysAdmin();
+        String email = "tenant2@thingsboard.org";
+        User user = new User();
+        user.setAuthority(Authority.TENANT_ADMIN);
+        user.setTenantId(tenantId);
+        user.setEmail(email);
+        user.setFirstName("Joe");
+        user.setLastName("Downs");
+        return doPost("/api/user", user, User.class);
+    }
 }

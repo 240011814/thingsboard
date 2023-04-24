@@ -1,5 +1,5 @@
 /**
- * Copyright © 2016-2022 The Thingsboard Authors
+ * Copyright © 2016-2023 The Thingsboard Authors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -33,7 +33,7 @@ public abstract class BaseSqlEntity<D> implements BaseEntity<D> {
     @Column(name = ModelConstants.ID_PROPERTY, columnDefinition = "uuid")
     protected UUID id;
 
-    @Column(name = ModelConstants.CREATED_TIME_PROPERTY)
+    @Column(name = ModelConstants.CREATED_TIME_PROPERTY, updatable = false)
     protected long createdTime;
 
     @Override

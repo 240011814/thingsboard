@@ -18,8 +18,30 @@ As result, in REPOSITORY column, next images should be present:
         thingsboard/tb-web-ui
         thingsboard/tb-js-executor
 
-- Run the black box tests in the [msa/black-box-tests](../black-box-tests) directory:
+- Run the black box tests in the [msa/black-box-tests](../black-box-tests) directory with Redis standalone:
 
         mvn clean install -DblackBoxTests.skip=false
+
+- Run the black box tests in the [msa/black-box-tests](../black-box-tests) directory with Redis cluster:
+
+        mvn clean install -DblackBoxTests.skip=false -DblackBoxTests.redisCluster=true
+
+- Run the black box tests in the [msa/black-box-tests](../black-box-tests) directory in Hybrid mode (postgres + cassandra):
+
+        mvn clean install -DblackBoxTests.skip=false -DblackBoxTests.hybridMode=true
+
+- To run the black box tests with using local env run tests in the [msa/black-box-tests](../black-box-tests) directory with runLocal property:
+
+        mvn clean install -DblackBoxTests.skip=false -DrunLocal=true
+
+- To run ui smoke tests in the [msa/black-box-tests](../black-box-tests) directory specifying suite name: 
+
+        mvn clean install -DblackBoxTests.skip=false -Dsuite=uiTests
+
+- To run all tests in the [msa/black-box-tests](../black-box-tests) directory specifying suite name:
+
+        mvn clean install -DblackBoxTests.skip=false -Dsuite=all 
+
+
 
 

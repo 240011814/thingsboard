@@ -1,5 +1,5 @@
 ///
-/// Copyright © 2016-2022 The Thingsboard Authors
+/// Copyright © 2016-2023 The Thingsboard Authors
 ///
 /// Licensed under the Apache License, Version 2.0 (the "License");
 /// you may not use this file except in compliance with the License.
@@ -66,7 +66,8 @@ export class LegendConfigComponent implements OnInit, OnDestroy, ControlValueAcc
       showMin: [null, []],
       showMax: [null, []],
       showAvg: [null, []],
-      showTotal: [null, []]
+      showTotal: [null, []],
+      showLatest: [null, []]
     });
     this.legendSettingsFormDirectionChanges$ = this.legendConfigForm.get('direction').valueChanges
       .subscribe((direction: LegendDirection) => {
@@ -124,7 +125,8 @@ export class LegendConfigComponent implements OnInit, OnDestroy, ControlValueAcc
         showMin: isDefined(legendConfig.showMin) ? legendConfig.showMin : false,
         showMax: isDefined(legendConfig.showMax) ? legendConfig.showMax : false,
         showAvg: isDefined(legendConfig.showAvg) ? legendConfig.showAvg : false,
-        showTotal: isDefined(legendConfig.showTotal) ? legendConfig.showTotal : false
+        showTotal: isDefined(legendConfig.showTotal) ? legendConfig.showTotal : false,
+        showLatest: isDefined(legendConfig.showLatest) ? legendConfig.showLatest : false
       }, {emitEvent: false});
     }
     this.onDirectionChanged(legendConfig.direction);

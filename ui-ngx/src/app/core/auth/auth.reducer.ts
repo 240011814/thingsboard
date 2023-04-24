@@ -1,5 +1,5 @@
 ///
-/// Copyright © 2016-2022 The Thingsboard Authors
+/// Copyright © 2016-2023 The Thingsboard Authors
 ///
 /// Licensed under the Apache License, Version 2.0 (the "License");
 /// you may not use this file except in compliance with the License.
@@ -23,7 +23,9 @@ const emptyUserAuthState: AuthPayload = {
   userTokenAccessEnabled: false,
   forceFullscreen: false,
   allowedDashboardIds: [],
-  edgesSupportEnabled: false
+  edgesSupportEnabled: false,
+  hasRepository: false,
+  tbelEnabled: false
 };
 
 export const initialState: AuthState = {
@@ -52,6 +54,9 @@ export function authReducer(
       return { ...state, ...action.payload};
 
     case AuthActionTypes.UPDATE_LAST_PUBLIC_DASHBOARD_ID:
+      return { ...state, ...action.payload};
+
+    case AuthActionTypes.UPDATE_HAS_REPOSITORY:
       return { ...state, ...action.payload};
 
     default:
