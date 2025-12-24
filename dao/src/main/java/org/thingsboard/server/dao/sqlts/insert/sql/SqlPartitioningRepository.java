@@ -1,5 +1,5 @@
 /**
- * Copyright © 2016-2023 The Thingsboard Authors
+ * Copyright © 2016-2025 The Thingsboard Authors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,6 +19,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.exception.ExceptionUtils;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Primary;
 import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
@@ -32,6 +33,7 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.locks.ReentrantLock;
 
+@Primary
 @Repository
 @Slf4j
 public class SqlPartitioningRepository {
@@ -49,7 +51,7 @@ public class SqlPartitioningRepository {
 
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public void save(SqlPartition partition) {
-        jdbcTemplate.execute(partition.getQuery());
+        getJdbcTemplate().execute(partition.getQuery());
     }
 
     @Transactional(propagation = Propagation.NOT_SUPPORTED) // executing non-transactionally, so that parent transaction is not aborted on partition save error
@@ -57,7 +59,7 @@ public class SqlPartitioningRepository {
         long partitionStartTs = calculatePartitionStartTime(entityTs, partitionDurationMs);
         Map<Long, SqlPartition> partitions = tablesPartitions.computeIfAbsent(table, t -> new ConcurrentHashMap<>());
         if (!partitions.containsKey(partitionStartTs)) {
-            SqlPartition partition = new SqlPartition(table, partitionStartTs, partitionStartTs + partitionDurationMs, Long.toString(partitionStartTs));
+            SqlPartition partition = new SqlPartition(table, partitionStartTs, getPartitionEndTime(partitionStartTs, partitionDurationMs), Long.toString(partitionStartTs));
             partitionCreationLock.lock();
             try {
                 if (partitions.containsKey(partitionStartTs)) return;
@@ -79,26 +81,29 @@ public class SqlPartitioningRepository {
         }
     }
 
-    public void dropPartitionsBefore(String table, long ts, long partitionDurationMs) {
+    public long dropPartitionsBefore(String table, long ts, long partitionDurationMs) {
         List<Long> partitions = fetchPartitions(table);
+        long lastDroppedPartitionEndTime = -1;
         for (Long partitionStartTime : partitions) {
-            long partitionEndTime = partitionStartTime + partitionDurationMs;
+            long partitionEndTime = getPartitionEndTime(partitionStartTime, partitionDurationMs);
             if (partitionEndTime < ts) {
                 log.info("[{}] Detaching expired partition: [{}-{}]", table, partitionStartTime, partitionEndTime);
                 boolean success = detachAndDropPartition(table, partitionStartTime);
                 if (success) {
                     log.info("[{}] Detached expired partition: {}", table, partitionStartTime);
+                    lastDroppedPartitionEndTime = Math.max(partitionEndTime, lastDroppedPartitionEndTime);
                 }
             } else {
                 log.debug("[{}] Skipping valid partition: {}", table, partitionStartTime);
             }
         }
+        return lastDroppedPartitionEndTime;
     }
 
     public void cleanupPartitionsCache(String table, long expTime, long partitionDurationMs) {
         Map<Long, SqlPartition> partitions = tablesPartitions.get(table);
         if (partitions == null) return;
-        partitions.keySet().removeIf(startTime -> (startTime + partitionDurationMs) < expTime);
+        partitions.keySet().removeIf(startTime -> getPartitionEndTime(startTime, partitionDurationMs) < expTime);
     }
 
     private boolean detachAndDropPartition(String table, long partitionTs) {
@@ -107,14 +112,17 @@ public class SqlPartitioningRepository {
 
         String tablePartition = table + "_" + partitionTs;
         String detachPsqlStmtStr = "ALTER TABLE " + table + " DETACH PARTITION " + tablePartition;
-        if (getCurrentServerVersion() >= PSQL_VERSION_14) {
-            detachPsqlStmtStr += " CONCURRENTLY";
-        }
+
+        // hotfix of ERROR: partition "integration_debug_event_1678323600000" already pending detach in partitioned table "public.integration_debug_event"
+        // https://github.com/thingsboard/thingsboard/issues/8271
+        // if (getCurrentServerVersion() >= PSQL_VERSION_14) {
+        //    detachPsqlStmtStr += " CONCURRENTLY";
+        // }
 
         String dropStmtStr = "DROP TABLE " + tablePartition;
         try {
-            jdbcTemplate.execute(detachPsqlStmtStr);
-            jdbcTemplate.execute(dropStmtStr);
+            getJdbcTemplate().execute(detachPsqlStmtStr);
+            getJdbcTemplate().execute(dropStmtStr);
             return true;
         } catch (DataAccessException e) {
             log.error("[{}] Error occurred trying to detach and drop the partition {} ", table, partitionTs, e);
@@ -122,15 +130,19 @@ public class SqlPartitioningRepository {
         return false;
     }
 
+    private static long getPartitionEndTime(long startTime, long partitionDurationMs) {
+        return startTime + partitionDurationMs;
+    }
+
     public List<Long> fetchPartitions(String table) {
         List<Long> partitions = new ArrayList<>();
-        List<String> partitionsTables = jdbcTemplate.queryForList(SELECT_PARTITIONS_STMT, String.class, table);
+        List<String> partitionsTables = getJdbcTemplate().queryForList(SELECT_PARTITIONS_STMT, String.class, table);
         for (String partitionTableName : partitionsTables) {
             String partitionTsStr = partitionTableName.substring(table.length() + 1);
             try {
                 partitions.add(Long.parseLong(partitionTsStr));
             } catch (NumberFormatException nfe) {
-                log.warn("Failed to parse table name: {}", partitionTableName);
+                log.debug("Failed to parse table name: {}", partitionTableName);
             }
         }
         return partitions;
@@ -143,7 +155,7 @@ public class SqlPartitioningRepository {
     private synchronized int getCurrentServerVersion() {
         if (currentServerVersion == null) {
             try {
-                currentServerVersion = jdbcTemplate.queryForObject("SELECT current_setting('server_version_num')", Integer.class);
+                currentServerVersion = getJdbcTemplate().queryForObject("SELECT current_setting('server_version_num')", Integer.class);
             } catch (Exception e) {
                 log.warn("Error occurred during fetch of the server version", e);
             }
@@ -152,6 +164,10 @@ public class SqlPartitioningRepository {
             }
         }
         return currentServerVersion;
+    }
+
+    protected JdbcTemplate getJdbcTemplate() {
+        return jdbcTemplate;
     }
 
 }

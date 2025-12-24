@@ -1,5 +1,5 @@
 ///
-/// Copyright © 2016-2023 The Thingsboard Authors
+/// Copyright © 2016-2025 The Thingsboard Authors
 ///
 /// Licensed under the Apache License, Version 2.0 (the "License");
 /// you may not use this file except in compliance with the License.
@@ -41,7 +41,7 @@ import { AttributeScope, DataKeyType } from '@shared/models/telemetry/telemetry.
 import { defaultHttpOptionsFromConfig, RequestConfig } from '@core/http/http-utils';
 import { RuleChainService } from '@core/http/rule-chain.service';
 import { AliasInfo, StateParams, SubscriptionInfo } from '@core/api/widget-api.models';
-import { DataKey, Datasource, DatasourceType, KeyInfo } from '@app/shared/models/widget.models';
+import { DataKey, Datasource, DatasourceType, DeprecatedFilter, KeyInfo } from '@app/shared/models/widget.models';
 import { UtilsService } from '@core/services/utils.service';
 import {
   AliasFilterType,
@@ -66,6 +66,8 @@ import { AttributeService } from '@core/http/attribute.service';
 import {
   AlarmData,
   AlarmDataQuery,
+  AlarmFilter,
+  AlarmFilterConfig,
   createDefaultEntityDataPageLink,
   EntityData,
   EntityDataQuery,
@@ -88,6 +90,17 @@ import { WidgetService } from '@core/http/widget.service';
 import { DeviceProfileService } from '@core/http/device-profile.service';
 import { QueueService } from '@core/http/queue.service';
 import { AssetProfileService } from '@core/http/asset-profile.service';
+import { NotificationService } from '@core/http/notification.service';
+import { TenantProfileService } from '@core/http/tenant-profile.service';
+import { NotificationType } from '@shared/models/notification.models';
+import { UserId } from '@shared/models/id/user-id';
+import { AlarmService } from '@core/http/alarm.service';
+import { ResourceService } from '@core/http/resource.service';
+import { OAuth2Service } from '@core/http/oauth2.service';
+import { MobileAppService } from '@core/http/mobile-app.service';
+import { PlatformType } from '@shared/models/oauth2.models';
+import { AiModelService } from '@core/http/ai-model.service';
+import { ResourceType } from "@shared/models/resource.models";
 
 @Injectable({
   providedIn: 'root'
@@ -111,9 +124,16 @@ export class EntityService {
     private otaPackageService: OtaPackageService,
     private widgetService: WidgetService,
     private deviceProfileService: DeviceProfileService,
+    private tenantProfileService: TenantProfileService,
     private assetProfileService: AssetProfileService,
     private utils: UtilsService,
-    private queueService: QueueService
+    private queueService: QueueService,
+    private notificationService: NotificationService,
+    private alarmService: AlarmService,
+    private resourceService: ResourceService,
+    private oauth2Service: OAuth2Service,
+    private mobileAppService: MobileAppService,
+    private aiModelService: AiModelService,
   ) { }
 
   private getEntityObservable(entityType: EntityType, entityId: string,
@@ -149,13 +169,31 @@ export class EntityService {
         observable = this.ruleChainService.getRuleChain(entityId, config);
         break;
       case EntityType.ALARM:
-        console.error('Get Alarm Entity is not implemented!');
+        observable = this.alarmService.getAlarm(entityId, config);
         break;
       case EntityType.OTA_PACKAGE:
         observable = this.otaPackageService.getOtaPackageInfo(entityId, config);
         break;
       case EntityType.QUEUE:
         observable = this.queueService.getQueueById(entityId, config);
+        break;
+      case EntityType.QUEUE_STATS:
+        observable = this.queueService.getQueueStatisticsById(entityId, config);
+        break;
+      case EntityType.MOBILE_APP:
+        observable = this.mobileAppService.getMobileAppInfoById(entityId, config);
+        break;
+      case EntityType.MOBILE_APP_BUNDLE:
+        observable = this.mobileAppService.getMobileAppBundleInfoById(entityId, config);
+        break;
+      case EntityType.AI_MODEL:
+        observable = this.aiModelService.getAiModelById(entityId, config);
+        break;
+      case EntityType.DEVICE_PROFILE:
+        observable = this.deviceProfileService.getDeviceProfile(entityId, config);
+        break;
+      case EntityType.ASSET_PROFILE:
+        observable = this.assetProfileService.getAssetProfile(entityId, config);
         break;
     }
     return observable;
@@ -207,47 +245,49 @@ export class EntityService {
         observable = this.edgeService.getEdges(entityIds, config);
         break;
       case EntityType.ENTITY_VIEW:
-        observable = this.getEntitiesByIdsObservable(
-          (id) => this.entityViewService.getEntityView(id, config),
-          entityIds);
+        observable = this.entityViewService.getEntityViews(entityIds, config);
         break;
       case EntityType.TENANT:
-        observable = this.getEntitiesByIdsObservable(
-          (id) => this.tenantService.getTenant(id, config),
-          entityIds);
+        observable = this.tenantService.getTenantsByIds(entityIds, config);
         break;
       case EntityType.CUSTOMER:
-        observable = this.getEntitiesByIdsObservable(
-          (id) => this.customerService.getCustomer(id, config),
-          entityIds);
+        observable = this.customerService.getCustomersByIds(entityIds, config);
         break;
       case EntityType.DASHBOARD:
-        observable = this.getEntitiesByIdsObservable(
-          (id) => this.dashboardService.getDashboardInfo(id, config),
-          entityIds);
+        observable = this.dashboardService.getDashboards(entityIds, config);
         break;
       case EntityType.USER:
-        observable = this.getEntitiesByIdsObservable(
-          (id) => this.userService.getUser(id, config),
-          entityIds);
+        observable = this.userService.getUsersByIds(entityIds, config);
         break;
       case EntityType.ALARM:
         console.error('Get Alarm Entity is not implemented!');
         break;
       case EntityType.DEVICE_PROFILE:
-        observable = this.getEntitiesByIdsObservable(
-          (id) => this.deviceProfileService.getDeviceProfileInfo(id, config),
-          entityIds);
+        observable = this.deviceProfileService.getDeviceProfilesByIds(entityIds, config);
+        break;
+      case EntityType.TENANT_PROFILE:
+        observable = this.tenantProfileService.getTenantProfilesByIds(entityIds, config);
         break;
       case EntityType.ASSET_PROFILE:
-        observable = this.getEntitiesByIdsObservable(
-          (id) => this.assetProfileService.getAssetProfileInfo(id, config),
-          entityIds);
+        observable = this.assetProfileService.getAssetProfilesByIds(entityIds, config);
         break;
       case EntityType.WIDGETS_BUNDLE:
-        observable = this.getEntitiesByIdsObservable(
-          (id) => this.widgetService.getWidgetsBundle(id, config),
-          entityIds);
+        observable = this.widgetService.getWidgetsBundlesByIds(entityIds, config);
+        break;
+      case EntityType.NOTIFICATION_TARGET:
+        observable = this.notificationService.getNotificationTargetsByIds(entityIds, config);
+        break;
+      case EntityType.QUEUE_STATS:
+        observable = this.queueService.getQueueStatisticsByIds(entityIds, config);
+        break;
+      case EntityType.OAUTH2_CLIENT:
+        observable = this.oauth2Service.findTenantOAuth2ClientInfosByIds(entityIds, config);
+        break;
+      case EntityType.RULE_CHAIN:
+        observable = this.ruleChainService.getRuleChainsByIds(entityIds, config);
+        break;
+      case EntityType.TB_RESOURCE:
+        observable = this.resourceService.getResourcesByIds(entityIds, config);
         break;
     }
     return observable;
@@ -394,13 +434,57 @@ export class EntityService {
         pageLink.sortOrder.property = 'name';
         entitiesObservable = this.deviceProfileService.getDeviceProfileInfos(pageLink, null, config);
         break;
+      case EntityType.TENANT_PROFILE:
+        pageLink.sortOrder.property = 'name';
+        entitiesObservable = this.tenantProfileService.getTenantProfiles(pageLink, config);
+        break;
       case EntityType.ASSET_PROFILE:
         pageLink.sortOrder.property = 'name';
         entitiesObservable = this.assetProfileService.getAssetProfileInfos(pageLink, config);
         break;
       case EntityType.WIDGETS_BUNDLE:
         pageLink.sortOrder.property = 'title';
-        entitiesObservable = this.widgetService.getWidgetBundles(pageLink, config);
+        entitiesObservable = this.widgetService.getWidgetBundles(pageLink, false, true, false, config);
+        break;
+      case EntityType.WIDGET_TYPE:
+        pageLink.sortOrder.property = 'name';
+        entitiesObservable = this.widgetService.getWidgetTypes(pageLink, true, false, false, DeprecatedFilter.ALL, null, config);
+        break;
+      case EntityType.NOTIFICATION_TARGET:
+        pageLink.sortOrder.property = 'name';
+        entitiesObservable = this.notificationService.getNotificationTargets(pageLink, subType as NotificationType, config);
+        break;
+      case EntityType.NOTIFICATION_TEMPLATE:
+        pageLink.sortOrder.property = 'name';
+        entitiesObservable = this.notificationService.getNotificationTemplates(pageLink, subType as NotificationType, config);
+        break;
+      case EntityType.NOTIFICATION_RULE:
+        pageLink.sortOrder.property = 'name';
+        entitiesObservable = this.notificationService.getNotificationRules(pageLink, config);
+        break;
+      case EntityType.TB_RESOURCE:
+        pageLink.sortOrder.property = 'title';
+        entitiesObservable = this.resourceService.getResources(pageLink, subType as ResourceType, null, config);
+        break;
+      case EntityType.QUEUE_STATS:
+        pageLink.sortOrder.property = 'createdTime';
+        entitiesObservable = this.queueService.getQueueStatistics(pageLink, config);
+        break;
+      case EntityType.OAUTH2_CLIENT:
+        pageLink.sortOrder.property = 'title';
+        entitiesObservable = this.oauth2Service.findTenantOAuth2ClientInfos(pageLink, config);
+        break;
+      case EntityType.MOBILE_APP:
+        pageLink.sortOrder.property = 'pkgName';
+        entitiesObservable = this.mobileAppService.getTenantMobileAppInfos(pageLink, subType as PlatformType, config);
+        break;
+      case EntityType.MOBILE_APP_BUNDLE:
+        pageLink.sortOrder.property = 'title';
+        entitiesObservable = this.mobileAppService.getTenantMobileAppBundleInfos(pageLink, config);
+        break;
+      case EntityType.AI_MODEL:
+        pageLink.sortOrder.property = 'name';
+        entitiesObservable = this.aiModelService.getAiModels(pageLink, config);
         break;
     }
     return entitiesObservable;
@@ -459,9 +543,13 @@ export class EntityService {
   }
 
   public findEntityKeysByQuery(query: EntityDataQuery, attributes = true, timeseries = true,
-                               config?: RequestConfig): Observable<EntitiesKeysByQuery> {
+                               scope?: AttributeScope, config?: RequestConfig): Observable<EntitiesKeysByQuery> {
+    let url = `/api/entitiesQuery/find/keys?attributes=${attributes}&timeseries=${timeseries}`;
+    if (scope) {
+      url += `&scope=${scope}`;
+    }
     return this.http.post<EntitiesKeysByQuery>(
-      `/api/entitiesQuery/find/keys?attributes=${attributes}&timeseries=${timeseries}`,
+      url,
       query, defaultHttpOptionsFromConfig(config));
   }
 
@@ -674,6 +762,8 @@ export class EntityService {
           entityTypes.push(EntityType.EDGE);
         }
         if (useAliasEntityTypes) {
+          entityTypes.push(EntityType.QUEUE_STATS);
+
           entityTypes.push(AliasEntityType.CURRENT_CUSTOMER);
           entityTypes.push(AliasEntityType.CURRENT_TENANT);
         }
@@ -715,9 +805,13 @@ export class EntityService {
     switch (entityType) {
       case EntityType.USER:
         entityFieldKeys.push(entityFields.name.keyName);
+        entityFieldKeys.push(entityFields.displayName.keyName);
         entityFieldKeys.push(entityFields.email.keyName);
         entityFieldKeys.push(entityFields.firstName.keyName);
         entityFieldKeys.push(entityFields.lastName.keyName);
+        entityFieldKeys.push(entityFields.phone.keyName);
+        entityFieldKeys.push(entityFields.ownerName.keyName);
+        entityFieldKeys.push(entityFields.ownerType.keyName);
         break;
       case EntityType.TENANT:
       case EntityType.CUSTOMER:
@@ -734,19 +828,30 @@ export class EntityService {
       case EntityType.ENTITY_VIEW:
         entityFieldKeys.push(entityFields.name.keyName);
         entityFieldKeys.push(entityFields.type.keyName);
+        entityFieldKeys.push(entityFields.ownerName.keyName);
+        entityFieldKeys.push(entityFields.ownerType.keyName);
         break;
       case EntityType.DEVICE:
       case EntityType.EDGE:
       case EntityType.ASSET:
         entityFieldKeys.push(entityFields.name.keyName);
+        entityFieldKeys.push(entityFields.displayName.keyName);
         entityFieldKeys.push(entityFields.type.keyName);
         entityFieldKeys.push(entityFields.label.keyName);
+        entityFieldKeys.push(entityFields.ownerName.keyName);
+        entityFieldKeys.push(entityFields.ownerType.keyName);
         break;
       case EntityType.DASHBOARD:
         entityFieldKeys.push(entityFields.title.keyName);
+        entityFieldKeys.push(entityFields.ownerName.keyName);
+        entityFieldKeys.push(entityFields.ownerType.keyName);
         break;
       case EntityType.API_USAGE_STATE:
         entityFieldKeys.push(entityFields.name.keyName);
+        break;
+      case EntityType.QUEUE_STATS:
+        entityFieldKeys.push(entityFields.queueName.keyName);
+        entityFieldKeys.push(entityFields.serviceId.keyName);
         break;
     }
     return query ? entityFieldKeys.filter((entityField) => entityField.toLowerCase().indexOf(query) === 0) : entityFieldKeys;
@@ -787,7 +892,15 @@ export class EntityService {
     );
   }
 
-  public getEntityKeysByEntityFilter(filter: EntityFilter, types: DataKeyType[], config?: RequestConfig): Observable<Array<DataKey>> {
+  public getEntityKeysByEntityFilter(filter: EntityFilter, types: DataKeyType[],
+                                     entityTypes?: EntityType[],
+                                     config?: RequestConfig): Observable<Array<DataKey>> {
+    return this.getEntityKeysByEntityFilterAndScope(filter, types, entityTypes, null, config);
+  }
+
+  public getEntityKeysByEntityFilterAndScope(filter: EntityFilter, types: DataKeyType[],
+                                             entityTypes?: EntityType[], scope?: AttributeScope,
+                                             config?: RequestConfig): Observable<Array<DataKey>> {
     if (!types.length) {
       return of([]);
     }
@@ -798,12 +911,12 @@ export class EntityService {
         pageLink: createDefaultEntityDataPageLink(100),
       };
       entitiesKeysByQuery$ = this.findEntityKeysByQuery(dataQuery, types.includes(DataKeyType.attribute),
-        types.includes(DataKeyType.timeseries), config);
+        types.includes(DataKeyType.timeseries), scope, config);
     } else {
       entitiesKeysByQuery$ = of({
         attribute: [],
         timeseries: [],
-        entityTypes: [],
+        entityTypes: entityTypes || [],
       });
     }
     return entitiesKeysByQuery$.pipe(
@@ -912,11 +1025,7 @@ export class EntityService {
     const stateEntityId = stateEntityInfo.entityId;
     switch (filter.type) {
       case AliasFilterType.singleEntity:
-        const aliasEntityId = this.resolveAliasEntityId(filter.singleEntity.entityType, filter.singleEntity.id);
-        result.entityFilter = {
-          type: AliasFilterType.singleEntity,
-          singleEntity: aliasEntityId
-        };
+        result.entityFilter = deepClone(filter);
         return of(result);
       case AliasFilterType.entityList:
         result.entityFilter = deepClone(filter);
@@ -967,9 +1076,8 @@ export class EntityService {
           rootEntityId = filter.rootEntity.id;
         }
         if (rootEntityType && rootEntityId) {
-          const queryRootEntityId = this.resolveAliasEntityId(rootEntityType, rootEntityId);
           result.entityFilter = deepClone(filter);
-          result.entityFilter.rootEntity = queryRootEntityId;
+          result.entityFilter.rootEntity = {entityType: rootEntityType, id: rootEntityId};
           return of(result);
         } else {
           return of(result);
@@ -988,6 +1096,24 @@ export class EntityService {
       }),
       catchError(err => of(false))
     );
+  }
+
+  public resolveAlarmFilter(alarmFilterConfig?: AlarmFilterConfig, searchPropagatedByDefault = true): AlarmFilter {
+    const alarmFilter: AlarmFilter = {};
+    if (alarmFilterConfig) {
+      alarmFilter.typeList = alarmFilterConfig.typeList;
+      alarmFilter.severityList = alarmFilterConfig.severityList;
+      alarmFilter.statusList = alarmFilterConfig.statusList;
+      alarmFilter.searchPropagatedAlarms = isDefined(alarmFilterConfig.searchPropagatedAlarms) ?
+        alarmFilterConfig.searchPropagatedAlarms : searchPropagatedByDefault;
+      if (alarmFilterConfig.assignedToCurrentUser) {
+        const authUser = getCurrentAuthUser(this.store);
+        alarmFilter.assigneeId = new UserId(authUser.userId);
+      } else {
+        alarmFilter.assigneeId = alarmFilterConfig.assigneeId;
+      }
+    }
+    return alarmFilter;
   }
 
   public saveEntityParameters(entityType: EntityType, entityData: ImportEntityData, update: boolean,
@@ -1250,42 +1376,7 @@ export class EntityService {
     if (!entityId) {
       entityId = filter.defaultStateEntity;
     }
-    if (entityId) {
-      entityId = this.resolveAliasEntityId(entityId.entityType, entityId.id);
-    }
     return {entityId};
-  }
-
-  private resolveAliasEntityId(entityType: EntityType | AliasEntityType, id: string): EntityId {
-    const entityId: EntityId = {
-      entityType,
-      id
-    };
-    if (entityType === AliasEntityType.CURRENT_CUSTOMER) {
-      const authUser = getCurrentAuthUser(this.store);
-      entityId.entityType = EntityType.CUSTOMER;
-      if (authUser.authority === Authority.CUSTOMER_USER) {
-        entityId.id = authUser.customerId;
-      }
-    } else if (entityType === AliasEntityType.CURRENT_TENANT){
-      const authUser =  getCurrentAuthUser(this.store);
-      entityId.entityType = EntityType.TENANT;
-      entityId.id = authUser.tenantId;
-    } else if (entityType === AliasEntityType.CURRENT_USER){
-      const authUser =  getCurrentAuthUser(this.store);
-      entityId.entityType = EntityType.USER;
-      entityId.id = authUser.userId;
-    } else if (entityType === AliasEntityType.CURRENT_USER_OWNER){
-      const authUser =  getCurrentAuthUser(this.store);
-      if (authUser.authority === Authority.TENANT_ADMIN) {
-        entityId.entityType = EntityType.TENANT;
-        entityId.id = authUser.tenantId;
-      } else if (authUser.authority === Authority.CUSTOMER_USER) {
-        entityId.entityType = EntityType.CUSTOMER;
-        entityId.id = authUser.customerId;
-      }
-    }
-    return entityId;
   }
 
   private createDatasourceFromSubscriptionInfo(subscriptionInfo: SubscriptionInfo): Datasource {
@@ -1301,7 +1392,8 @@ export class EntityService {
         dataKeys: []
       };
       this.prepareEntityFilterFromSubscriptionInfo(datasource, subscriptionInfo);
-    } else if (subscriptionInfo.type === DatasourceType.function || subscriptionInfo.type === DatasourceType.entityCount) {
+    } else if (subscriptionInfo.type === DatasourceType.function || subscriptionInfo.type === DatasourceType.entityCount ||
+      subscriptionInfo.type === DatasourceType.alarmCount) {
       datasource = {
         type: subscriptionInfo.type,
         name: subscriptionInfo.name || subscriptionInfo.type,
@@ -1321,7 +1413,7 @@ export class EntityService {
       if (subscriptionInfo.alarmFields) {
         this.createDatasourceKeys(subscriptionInfo.alarmFields, DataKeyType.alarm, datasource);
       }
-      if (subscriptionInfo.type === DatasourceType.entityCount) {
+      if (subscriptionInfo.type === DatasourceType.entityCount || subscriptionInfo.type === DatasourceType.alarmCount) {
         const dataKey = this.utils.createKey({ name: 'count'}, DataKeyType.count);
         datasource.dataKeys.push(dataKey);
       }
@@ -1455,5 +1547,32 @@ export class EntityService {
         break;
     }
     return entityObservable;
+  }
+
+  public getEntitySubtypesObservable(entityType: EntityType): Observable<Array<string>> {
+    let observable: Observable<Array<string>>;
+    switch (entityType) {
+      case EntityType.ASSET:
+        observable = this.assetProfileService.getAssetProfileNames(false, {ignoreLoading: true}).pipe(
+          map(subTypes => subTypes.map(subType => subType.name))
+        );
+        break;
+      case EntityType.DEVICE:
+        observable = this.deviceProfileService.getDeviceProfileNames(false,{ignoreLoading: true}).pipe(
+          map(subTypes => subTypes.map(subType => subType.name))
+        );
+        break;
+      case EntityType.EDGE:
+        observable = this.edgeService.getEdgeTypes({ignoreLoading: true}).pipe(
+          map(subTypes => subTypes.map(subType => subType.type))
+        );
+        break;
+      case EntityType.ENTITY_VIEW:
+        observable = this.entityViewService.getEntityViewTypes({ignoreLoading: true}).pipe(
+          map(subTypes => subTypes.map(subType => subType.type))
+        );
+        break;
+    }
+    return observable;
   }
 }

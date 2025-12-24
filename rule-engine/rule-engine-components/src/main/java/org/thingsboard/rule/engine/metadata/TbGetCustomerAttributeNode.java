@@ -1,5 +1,5 @@
 /**
- * Copyright © 2016-2023 The Thingsboard Authors
+ * Copyright © 2016-2025 The Thingsboard Authors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,30 +15,66 @@
  */
 package org.thingsboard.rule.engine.metadata;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.util.concurrent.ListenableFuture;
 import org.thingsboard.rule.engine.api.RuleNode;
 import org.thingsboard.rule.engine.api.TbContext;
-import org.thingsboard.rule.engine.util.EntitiesCustomerIdAsyncLoader;
+import org.thingsboard.rule.engine.api.TbNodeConfiguration;
+import org.thingsboard.rule.engine.api.TbNodeException;
+import org.thingsboard.rule.engine.api.util.TbNodeUtils;
+import org.thingsboard.server.common.data.EntityType;
 import org.thingsboard.server.common.data.id.CustomerId;
 import org.thingsboard.server.common.data.id.EntityId;
 import org.thingsboard.server.common.data.plugin.ComponentType;
+import org.thingsboard.server.common.data.util.TbPair;
+
+import java.util.NoSuchElementException;
+
+import static com.google.common.util.concurrent.Futures.immediateFuture;
 
 @RuleNode(
         type = ComponentType.ENRICHMENT,
-        name="customer attributes",
-        configClazz = TbGetEntityAttrNodeConfiguration.class,
-        nodeDescription = "Add Originators Customer Attributes or Latest Telemetry into Message Metadata",
-        nodeDetails = "If Attributes enrichment configured, server scope attributes are added into Message metadata. " +
-                "If Latest Telemetry enrichment configured, latest telemetry added into metadata. " +
-                "To access those attributes in other nodes this template can be used " +
-                "<code>metadata.temperature</code>.",
-        uiResources = {"static/rulenode/rulenode-core-config.js"},
-        configDirective = "tbEnrichmentNodeCustomerAttributesConfig")
-public class TbGetCustomerAttributeNode extends TbEntityGetAttrNode<CustomerId> {
+        name = "customer attributes",
+        configClazz = TbGetEntityDataNodeConfiguration.class,
+        version = 1,
+        nodeDescription = "Adds message originator customer attributes or latest telemetry into message or message metadata",
+        nodeDetails = "Useful in multi-customer solutions where each customer has a different configuration or threshold set " +
+                "that is stored as customer attributes or telemetry data and used for dynamic message filtering, transformation, " +
+                "or actions such as alarm creation if the threshold is exceeded.<br><br>" +
+                "Output connections: <code>Success</code>, <code>Failure</code>.",
+        configDirective = "tbEnrichmentNodeCustomerAttributesConfig",
+        docUrl = "https://thingsboard.io/docs/user-guide/rule-engine-2-0/nodes/enrichment/customer-attributes/"
+)
+public class TbGetCustomerAttributeNode extends TbAbstractGetEntityDataNode<CustomerId> {
+
+    @Override
+    protected TbGetEntityDataNodeConfiguration loadNodeConfiguration(TbNodeConfiguration configuration) throws TbNodeException {
+        var config = TbNodeUtils.convert(configuration, TbGetEntityDataNodeConfiguration.class);
+        checkIfMappingIsNotEmptyOrElseThrow(config.getDataMapping());
+        checkDataToFetchSupportedOrElseThrow(config.getDataToFetch());
+        return config;
+    }
 
     @Override
     protected ListenableFuture<CustomerId> findEntityAsync(TbContext ctx, EntityId originator) {
-        return EntitiesCustomerIdAsyncLoader.findEntityIdAsync(ctx, originator);
+        if (originator.getEntityType() == EntityType.CUSTOMER) {
+            return immediateFuture((CustomerId) originator);
+        }
+        return ctx.getEntityService().fetchEntityCustomerIdAsync(ctx.getTenantId(), originator)
+                .transform(customerIdOpt -> {
+                    if (customerIdOpt.isEmpty()) {
+                        throw new NoSuchElementException("Originator not found");
+                    }
+                    if (customerIdOpt.get().isNullUid()) {
+                        throw new IllegalStateException("Originator is not assigned to any customer");
+                    }
+                    return customerIdOpt.get();
+                }, ctx.getDbCallbackExecutor());
+    }
+
+    @Override
+    public TbPair<Boolean, JsonNode> upgrade(int fromVersion, JsonNode oldConfiguration) throws TbNodeException {
+        return fromVersion == 0 ? upgradeToUseFetchToAndDataToFetch(oldConfiguration) : new TbPair<>(false, oldConfiguration);
     }
 
 }

@@ -1,5 +1,5 @@
 ///
-/// Copyright © 2016-2023 The Thingsboard Authors
+/// Copyright © 2016-2025 The Thingsboard Authors
 ///
 /// Licensed under the Apache License, Version 2.0 (the "License");
 /// you may not use this file except in compliance with the License.
@@ -16,7 +16,7 @@
 
 import { Component } from '@angular/core';
 import { WidgetSettings, WidgetSettingsComponent } from '@shared/models/widget.models';
-import { FormBuilder, FormGroup, Validators } from '@angular/forms';
+import { UntypedFormBuilder, UntypedFormGroup, Validators } from '@angular/forms';
 import { Store } from '@ngrx/store';
 import { AppState } from '@core/core.state';
 
@@ -27,14 +27,14 @@ import { AppState } from '@core/core.state';
 })
 export class AlarmsTableKeySettingsComponent extends WidgetSettingsComponent {
 
-  alarmsTableKeySettingsForm: FormGroup;
+  alarmsTableKeySettingsForm: UntypedFormGroup;
 
   constructor(protected store: Store<AppState>,
-              private fb: FormBuilder) {
+              private fb: UntypedFormBuilder) {
     super(store);
   }
 
-  protected settingsForm(): FormGroup {
+  protected settingsForm(): UntypedFormGroup {
     return this.alarmsTableKeySettingsForm;
   }
 
@@ -47,7 +47,8 @@ export class AlarmsTableKeySettingsComponent extends WidgetSettingsComponent {
       useCellContentFunction: false,
       cellContentFunction: '',
       defaultColumnVisibility: 'visible',
-      columnSelectionToDisplay: 'enabled'
+      columnSelectionToDisplay: 'enabled',
+      disableSorting: false
     };
   }
 
@@ -61,6 +62,7 @@ export class AlarmsTableKeySettingsComponent extends WidgetSettingsComponent {
       cellContentFunction: [settings.cellContentFunction, [Validators.required]],
       defaultColumnVisibility: [settings.defaultColumnVisibility, []],
       columnSelectionToDisplay: [settings.columnSelectionToDisplay, []],
+      disableSorting: [settings.disableSorting, []]
     });
   }
 

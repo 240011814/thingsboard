@@ -1,5 +1,5 @@
 /**
- * Copyright © 2016-2023 The Thingsboard Authors
+ * Copyright © 2016-2025 The Thingsboard Authors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,10 +22,12 @@ import org.thingsboard.server.common.data.id.TenantId;
 import org.thingsboard.server.common.data.id.TenantProfileId;
 import org.thingsboard.server.common.data.page.PageData;
 import org.thingsboard.server.common.data.page.PageLink;
+import org.thingsboard.server.dao.entity.EntityDaoService;
 
 import java.util.List;
+import java.util.function.Consumer;
 
-public interface TenantService {
+public interface TenantService extends EntityDaoService {
 
     Tenant findTenantById(TenantId tenantId);
 
@@ -34,6 +36,8 @@ public interface TenantService {
     ListenableFuture<Tenant> findTenantByIdAsync(TenantId callerId, TenantId tenantId);
 
     Tenant saveTenant(Tenant tenant);
+
+    Tenant saveTenant(Tenant tenant, Consumer<TenantId> defaultEntitiesCreator);
 
     boolean tenantExists(TenantId tenantId);
 
@@ -45,7 +49,12 @@ public interface TenantService {
 
     List<TenantId> findTenantIdsByTenantProfileId(TenantProfileId tenantProfileId);
 
+    Tenant findTenantByName(String name);
+
     void deleteTenants();
 
     PageData<TenantId> findTenantsIds(PageLink pageLink);
+
+    List<Tenant> findTenantsByIds(TenantId callerId, List<TenantId> tenantIds);
+
 }

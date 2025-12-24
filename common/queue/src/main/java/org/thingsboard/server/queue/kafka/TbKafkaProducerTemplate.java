@@ -1,5 +1,5 @@
 /**
- * Copyright © 2016-2023 The Thingsboard Authors
+ * Copyright © 2016-2025 The Thingsboard Authors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -30,6 +30,9 @@ import org.thingsboard.server.queue.TbQueueCallback;
 import org.thingsboard.server.queue.TbQueueMsg;
 import org.thingsboard.server.queue.TbQueueProducer;
 
+import java.nio.charset.StandardCharsets;
+import java.util.List;
+import java.util.Objects;
 import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -51,12 +54,16 @@ public class TbKafkaProducerTemplate<T extends TbQueueMsg> implements TbQueuePro
 
     private final TbQueueAdmin admin;
 
-    private final Set<TopicPartitionInfo> topics;
+    private final Set<String> topics;
+
+    @Getter
+    private final String clientId;
 
     @Builder
     private TbKafkaProducerTemplate(TbKafkaSettings settings, String defaultTopic, String clientId, TbQueueAdmin admin) {
         Properties props = settings.toProducerProps();
 
+        this.clientId = Objects.requireNonNull(clientId, "Kafka producer client.id is null");
         if (!StringUtils.isEmpty(clientId)) {
             props.put(ProducerConfig.CLIENT_ID_CONFIG, clientId);
         }
@@ -68,19 +75,39 @@ public class TbKafkaProducerTemplate<T extends TbQueueMsg> implements TbQueuePro
         topics = ConcurrentHashMap.newKeySet();
     }
 
-    @Override
-    public void init() {
+    void addAnalyticHeaders(List<Header> headers) {
+        headers.add(new RecordHeader("_producerId", getClientId().getBytes(StandardCharsets.UTF_8)));
+        headers.add(new RecordHeader("_threadName", Thread.currentThread().getName().getBytes(StandardCharsets.UTF_8)));
+        if (log.isTraceEnabled()) {
+            try {
+                StackTraceElement[] stackTrace = Thread.currentThread().getStackTrace();
+                int maxLevel = Math.min(stackTrace.length, 20);
+                for (int i = 2; i < maxLevel; i++) { // ignore two levels: getStackTrace and addAnalyticHeaders
+                    headers.add(new RecordHeader("_stackTrace" + i, stackTrace[i].toString().getBytes(StandardCharsets.UTF_8)));
+                }
+            } catch (Throwable t) {
+                log.trace("Failed to add stacktrace headers in Kafka producer {}", getClientId(), t);
+            }
+        }
     }
 
     @Override
     public void send(TopicPartitionInfo tpi, T msg, TbQueueCallback callback) {
+        send(tpi, msg.getKey().toString(), msg, callback);
+    }
+
+    public void send(TopicPartitionInfo tpi, String key, T msg, TbQueueCallback callback) {
         try {
-            createTopicIfNotExist(tpi);
-            String key = msg.getKey().toString();
+            String topic = tpi.getFullTopicName();
+            createTopicIfNotExist(topic);
             byte[] data = msg.getData();
             ProducerRecord<String, byte[]> record;
-            Iterable<Header> headers = msg.getHeaders().getData().entrySet().stream().map(e -> new RecordHeader(e.getKey(), e.getValue())).collect(Collectors.toList());
-            record = new ProducerRecord<>(tpi.getFullTopicName(), null, key, data, headers);
+            List<Header> headers = msg.getHeaders().getData().entrySet().stream().map(e -> new RecordHeader(e.getKey(), e.getValue())).collect(Collectors.toList());
+            if (log.isDebugEnabled()) {
+                addAnalyticHeaders(headers);
+            }
+            Integer partition = tpi.isUseInternalPartition() ? tpi.getPartition().orElse(null) : null;
+            record = new ProducerRecord<>(topic, partition, key, data, headers);
             producer.send(record, (metadata, exception) -> {
                 if (exception == null) {
                     if (callback != null) {
@@ -90,7 +117,7 @@ public class TbKafkaProducerTemplate<T extends TbQueueMsg> implements TbQueuePro
                     if (callback != null) {
                         callback.onFailure(exception);
                     } else {
-                        log.warn("Producer template failure: {}", exception.getMessage(), exception);
+                        log.warn("Producer template failure", exception);
                     }
                 }
             });
@@ -104,12 +131,12 @@ public class TbKafkaProducerTemplate<T extends TbQueueMsg> implements TbQueuePro
         }
     }
 
-    private void createTopicIfNotExist(TopicPartitionInfo tpi) {
-        if (topics.contains(tpi)) {
+    private void createTopicIfNotExist(String topic) {
+        if (topics.contains(topic)) {
             return;
         }
-        admin.createTopicIfNotExists(tpi.getFullTopicName());
-        topics.add(tpi);
+        admin.createTopicIfNotExists(topic);
+        topics.add(topic);
     }
 
     @Override
@@ -118,4 +145,5 @@ public class TbKafkaProducerTemplate<T extends TbQueueMsg> implements TbQueuePro
             producer.close();
         }
     }
+
 }

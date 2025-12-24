@@ -1,5 +1,5 @@
 ///
-/// Copyright © 2016-2023 The Thingsboard Authors
+/// Copyright © 2016-2025 The Thingsboard Authors
 ///
 /// Licensed under the Apache License, Version 2.0 (the "License");
 /// you may not use this file except in compliance with the License.
@@ -14,16 +14,23 @@
 /// limitations under the License.
 ///
 
-// tslint:disable-next-line:no-reference
+// eslint-disable-next-line @typescript-eslint/triple-slash-reference
 /// <reference path="../../../../../../../src/typings/jquery.flot.typings.d.ts" />
 
-import { DataKey, Datasource, DatasourceData, FormattedData, JsonSettingsSchema } from '@shared/models/widget.models';
+import {
+  DataKey, DataKeySettingsWithComparison,
+  Datasource,
+  DatasourceData,
+  FormattedData,
+  LegendConfig
+} from '@shared/models/widget.models';
 import { DataKeyType } from '@shared/models/telemetry/telemetry.models';
 import { ComparisonDuration } from '@shared/models/time/time.models';
 
 export declare type ChartType = 'line' | 'pie' | 'bar' | 'state' | 'graph';
 
-export declare type TbFlotSettings = TbFlotBaseSettings & TbFlotGraphSettings & TbFlotBarSettings & TbFlotPieSettings;
+export declare type TbFlotSettings = TbFlotBaseSettings & TbFlotLegendSettings &
+  TbFlotGraphSettings & TbFlotBarSettings & TbFlotPieSettings;
 
 export declare type TooltipValueFormatFunction = (value: any, latestData: FormattedData) => string;
 
@@ -124,10 +131,12 @@ export interface TbFlotYAxisSettings {
   ticksFormatter: string;
   tickDecimals: number;
   tickSize: number;
+  tickGenerator: string;
 }
 
 export interface TbFlotBaseSettings {
   stack: boolean;
+  enableSelection: boolean;
   shadowSize: number;
   fontColor: string;
   fontSize: number;
@@ -138,6 +147,11 @@ export interface TbFlotBaseSettings {
   grid: TbFlotGridSettings;
   xaxis: TbFlotXAxisSettings;
   yaxis: TbFlotYAxisSettings;
+}
+
+export interface TbFlotLegendSettings {
+  showLegend?: boolean;
+  legendConfig?: LegendConfig;
 }
 
 export interface TbFlotComparisonSettings {
@@ -204,19 +218,14 @@ export interface TbFlotKeyThreshold {
   color: string;
 }
 
-export interface TbFlotKeyComparisonSettings {
-  showValuesForComparison: boolean;
-  comparisonValuesLabel: string;
-  color: string;
-}
-
-export interface TbFlotKeySettings {
+export interface TbFlotKeySettings extends DataKeySettingsWithComparison {
   excludeFromStacking: boolean;
   hideDataByDefault: boolean;
   disableDataHiding: boolean;
   removeFromLegend: boolean;
   showLines: boolean;
   fillLines: boolean;
+  fillLinesOpacity: number;
   showPoints: boolean;
   showPointShape: string;
   pointShapeFormatter: string;
@@ -233,7 +242,6 @@ export interface TbFlotKeySettings {
   axisPosition: TbFlotYAxisPosition;
   axisTicksFormatter: string;
   thresholds: TbFlotKeyThreshold[];
-  comparisonSettings: TbFlotKeyComparisonSettings;
 }
 
 export interface TbFlotLatestKeySettings {

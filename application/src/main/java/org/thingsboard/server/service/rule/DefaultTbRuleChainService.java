@@ -1,5 +1,5 @@
 /**
- * Copyright © 2016-2023 The Thingsboard Authors
+ * Copyright © 2016-2025 The Thingsboard Authors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -26,7 +26,6 @@ import org.thingsboard.server.common.data.EntityType;
 import org.thingsboard.server.common.data.User;
 import org.thingsboard.server.common.data.audit.ActionType;
 import org.thingsboard.server.common.data.edge.Edge;
-import org.thingsboard.server.common.data.edge.EdgeEventActionType;
 import org.thingsboard.server.common.data.exception.ThingsboardException;
 import org.thingsboard.server.common.data.id.EdgeId;
 import org.thingsboard.server.common.data.id.RuleChainId;
@@ -45,9 +44,11 @@ import org.thingsboard.server.common.data.rule.RuleNodeUpdateResult;
 import org.thingsboard.server.dao.relation.RelationService;
 import org.thingsboard.server.dao.rule.RuleChainService;
 import org.thingsboard.server.queue.util.TbCoreComponent;
+import org.thingsboard.server.service.component.ComponentDiscoveryService;
 import org.thingsboard.server.service.entitiy.AbstractTbEntityService;
 import org.thingsboard.server.service.install.InstallScripts;
-import org.thingsboard.server.service.sync.vc.EntitiesVersionControlService;
+import org.thingsboard.server.service.security.model.SecurityUser;
+import org.thingsboard.server.utils.TbNodeUpgradeUtils;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -70,8 +71,7 @@ public class DefaultTbRuleChainService extends AbstractTbEntityService implement
     private final RuleChainService ruleChainService;
     private final RelationService relationService;
     private final InstallScripts installScripts;
-
-    private final EntitiesVersionControlService vcService;
+    private final ComponentDiscoveryService componentDiscoveryService;
 
     @Override
     public Set<String> getRuleChainOutputLabels(TenantId tenantId, RuleChainId ruleChainId) {
@@ -171,23 +171,16 @@ public class DefaultTbRuleChainService extends AbstractTbEntityService implement
     }
 
     @Override
-    public RuleChain save(RuleChain ruleChain, User user) throws Exception {
-        TenantId tenantId = ruleChain.getTenantId();
+    public RuleChain save(RuleChain ruleChain, SecurityUser user) throws Exception {
         ActionType actionType = ruleChain.getId() == null ? ActionType.ADDED : ActionType.UPDATED;
+        TenantId tenantId = ruleChain.getTenantId();
         try {
             RuleChain savedRuleChain = checkNotNull(ruleChainService.saveRuleChain(ruleChain));
             autoCommit(user, savedRuleChain.getId());
-
-            if (RuleChainType.CORE.equals(savedRuleChain.getType())) {
-                tbClusterService.broadcastEntityStateChangeEvent(tenantId, savedRuleChain.getId(),
-                        actionType.equals(ActionType.ADDED) ? ComponentLifecycleEvent.CREATED : ComponentLifecycleEvent.UPDATED);
-            }
-            boolean sendMsgToEdge = RuleChainType.EDGE.equals(savedRuleChain.getType()) && actionType.equals(ActionType.UPDATED);
-            notificationEntityService.notifyCreateOrUpdateOrDelete(tenantId, null, savedRuleChain.getId(),
-                    savedRuleChain, user, actionType, sendMsgToEdge, null);
+            logEntityActionService.logEntityAction(tenantId, savedRuleChain.getId(), savedRuleChain, null, actionType, user);
             return savedRuleChain;
         } catch (Exception e) {
-            notificationEntityService.logEntityAction(tenantId, emptyId(EntityType.RULE_CHAIN), ruleChain, actionType, user, e);
+            logEntityActionService.logEntityAction(tenantId, emptyId(EntityType.RULE_CHAIN), ruleChain, actionType, user, e);
             throw e;
         }
     }
@@ -197,29 +190,10 @@ public class DefaultTbRuleChainService extends AbstractTbEntityService implement
         TenantId tenantId = ruleChain.getTenantId();
         RuleChainId ruleChainId = ruleChain.getId();
         try {
-            List<RuleNode> referencingRuleNodes = ruleChainService.getReferencingRuleChainNodes(tenantId, ruleChainId);
-
-            Set<RuleChainId> referencingRuleChainIds = referencingRuleNodes.stream().map(RuleNode::getRuleChainId).collect(Collectors.toSet());
-
-            List<EdgeId> relatedEdgeIds = null;
-            if (RuleChainType.EDGE.equals(ruleChain.getType())) {
-                relatedEdgeIds = edgeService.findAllRelatedEdgeIds(tenantId, ruleChainId);
-            }
-
             ruleChainService.deleteRuleChainById(tenantId, ruleChainId);
-
-            referencingRuleChainIds.remove(ruleChain.getId());
-
-            if (RuleChainType.CORE.equals(ruleChain.getType())) {
-                referencingRuleChainIds.forEach(referencingRuleChainId ->
-                        tbClusterService.broadcastEntityStateChangeEvent(tenantId, referencingRuleChainId, ComponentLifecycleEvent.UPDATED));
-
-                tbClusterService.broadcastEntityStateChangeEvent(tenantId, ruleChain.getId(), ComponentLifecycleEvent.DELETED);
-            }
-
-            notificationEntityService.notifyDeleteRuleChain(tenantId, ruleChain, relatedEdgeIds, user);
+            logEntityActionService.logEntityAction(tenantId, ruleChainId, ruleChain, null, ActionType.DELETED, user, ruleChainId.toString());
         } catch (Exception e) {
-            notificationEntityService.logEntityAction(tenantId, emptyId(EntityType.RULE_CHAIN), ActionType.DELETED,
+            logEntityActionService.logEntityAction(tenantId, emptyId(EntityType.RULE_CHAIN), ActionType.DELETED,
                     user, e, ruleChainId.toString());
             throw e;
         }
@@ -230,42 +204,34 @@ public class DefaultTbRuleChainService extends AbstractTbEntityService implement
         try {
             RuleChain savedRuleChain = installScripts.createDefaultRuleChain(tenantId, request.getName());
             autoCommit(user, savedRuleChain.getId());
-            tbClusterService.broadcastEntityStateChangeEvent(tenantId, savedRuleChain.getId(), ComponentLifecycleEvent.CREATED);
-            notificationEntityService.logEntityAction(tenantId, savedRuleChain.getId(), savedRuleChain, ActionType.ADDED, user);
+            logEntityActionService.logEntityAction(tenantId, savedRuleChain.getId(), savedRuleChain, ActionType.ADDED, user);
             return savedRuleChain;
         } catch (Exception e) {
             RuleChain ruleChain = new RuleChain();
             ruleChain.setName(request.getName());
-            notificationEntityService.logEntityAction(tenantId, emptyId(EntityType.RULE_CHAIN), ruleChain,
+            logEntityActionService.logEntityAction(tenantId, emptyId(EntityType.RULE_CHAIN), ruleChain,
                     ActionType.ADDED, user, e);
             throw e;
         }
     }
 
     @Override
-    public RuleChain setRootRuleChain(TenantId tenantId, RuleChain ruleChain, User user) throws ThingsboardException {
+    public RuleChain setRootRuleChain(TenantId tenantId, RuleChain ruleChain, User user) {
         RuleChainId ruleChainId = ruleChain.getId();
         try {
             RuleChain previousRootRuleChain = ruleChainService.getRootTenantRuleChain(tenantId);
             if (ruleChainService.setRootRuleChain(tenantId, ruleChainId)) {
                 if (previousRootRuleChain != null) {
-                    RuleChainId previousRootRuleChainId = previousRootRuleChain.getId();
-                    previousRootRuleChain = ruleChainService.findRuleChainById(tenantId, previousRootRuleChainId);
-
-                    tbClusterService.broadcastEntityStateChangeEvent(tenantId, previousRootRuleChainId,
-                            ComponentLifecycleEvent.UPDATED);
-                    notificationEntityService.logEntityAction(tenantId, previousRootRuleChainId, previousRootRuleChain,
+                    previousRootRuleChain = ruleChainService.findRuleChainById(tenantId, previousRootRuleChain.getId());
+                    logEntityActionService.logEntityAction(tenantId, previousRootRuleChain.getId(), previousRootRuleChain,
                             ActionType.UPDATED, user);
                 }
                 ruleChain = ruleChainService.findRuleChainById(tenantId, ruleChainId);
-
-                tbClusterService.broadcastEntityStateChangeEvent(tenantId, ruleChainId,
-                        ComponentLifecycleEvent.UPDATED);
-                notificationEntityService.logEntityAction(tenantId, ruleChainId, ruleChain, ActionType.UPDATED, user);
+                logEntityActionService.logEntityAction(tenantId, ruleChainId, ruleChain, ActionType.UPDATED, user);
             }
             return ruleChain;
         } catch (Exception e) {
-            notificationEntityService.logEntityAction(tenantId, emptyId(EntityType.RULE_CHAIN), ActionType.UPDATED,
+            logEntityActionService.logEntityAction(tenantId, emptyId(EntityType.RULE_CHAIN), ActionType.UPDATED,
                     user, e, ruleChainId.toString());
             throw e;
         }
@@ -277,7 +243,7 @@ public class DefaultTbRuleChainService extends AbstractTbEntityService implement
         RuleChainId ruleChainId = ruleChain.getId();
         RuleChainId ruleChainMetaDataId = ruleChainMetaData.getRuleChainId();
         try {
-            RuleChainUpdateResult result = ruleChainService.saveRuleChainMetaData(tenantId, ruleChainMetaData);
+            RuleChainUpdateResult result = ruleChainService.saveRuleChainMetaData(tenantId, ruleChainMetaData, this::updateRuleNodeConfiguration);
             checkNotNull(result.isSuccess() ? true : null);
 
             List<RuleChain> updatedRuleChains;
@@ -299,30 +265,22 @@ public class DefaultTbRuleChainService extends AbstractTbEntityService implement
             RuleChainMetaData savedRuleChainMetaData = checkNotNull(ruleChainService.loadRuleChainMetaData(tenantId, ruleChainMetaDataId));
 
             if (RuleChainType.CORE.equals(ruleChain.getType())) {
-                tbClusterService.broadcastEntityStateChangeEvent(tenantId, ruleChainId, ComponentLifecycleEvent.UPDATED);
-                updatedRuleChains.forEach(updatedRuleChain -> {
-                    tbClusterService.broadcastEntityStateChangeEvent(tenantId, updatedRuleChain.getId(), ComponentLifecycleEvent.UPDATED);
-                });
+                updatedRuleChains.forEach(updatedRuleChain ->
+                        tbClusterService.broadcastEntityStateChangeEvent(tenantId, updatedRuleChain.getId(), ComponentLifecycleEvent.UPDATED));
             }
 
-            notificationEntityService.logEntityAction(tenantId, ruleChainId, ruleChain, ActionType.UPDATED, user, ruleChainMetaData);
-
-            if (RuleChainType.EDGE.equals(ruleChain.getType())) {
-                notificationEntityService.notifySendMsgToEdgeService(tenantId, ruleChain.getId(), EdgeEventActionType.UPDATED);
-            }
+            logEntityActionService.logEntityAction(tenantId, ruleChainId, ruleChain, ActionType.UPDATED, user, ruleChainMetaData);
 
             for (RuleChain updatedRuleChain : updatedRuleChains) {
-                if (RuleChainType.EDGE.equals(ruleChain.getType())) {
-                    notificationEntityService.notifySendMsgToEdgeService(tenantId, updatedRuleChain.getId(), EdgeEventActionType.UPDATED);
-                } else {
+                if (RuleChainType.CORE.equals(ruleChain.getType())) {
                     RuleChainMetaData updatedRuleChainMetaData = checkNotNull(ruleChainService.loadRuleChainMetaData(tenantId, updatedRuleChain.getId()));
-                    notificationEntityService.logEntityAction(tenantId, updatedRuleChain.getId(), updatedRuleChain,
+                    logEntityActionService.logEntityAction(tenantId, updatedRuleChain.getId(), updatedRuleChain,
                             ActionType.UPDATED, user, updatedRuleChainMetaData);
                 }
             }
             return savedRuleChainMetaData;
         } catch (Exception e) {
-            notificationEntityService.logEntityAction(tenantId, emptyId(EntityType.RULE_CHAIN), ActionType.ADDED,
+            logEntityActionService.logEntityAction(tenantId, emptyId(EntityType.RULE_CHAIN), ActionType.ADDED,
                     user, e, ruleChainMetaData);
             throw e;
         }
@@ -330,34 +288,34 @@ public class DefaultTbRuleChainService extends AbstractTbEntityService implement
 
     @Override
     public RuleChain assignRuleChainToEdge(TenantId tenantId, RuleChain ruleChain, Edge edge, User user) throws ThingsboardException {
+        ActionType actionType = ActionType.ASSIGNED_TO_EDGE;
         RuleChainId ruleChainId = ruleChain.getId();
         EdgeId edgeId = edge.getId();
         try {
             RuleChain savedRuleChain = checkNotNull(ruleChainService.assignRuleChainToEdge(tenantId, ruleChainId, edgeId));
-            notificationEntityService.notifyAssignOrUnassignEntityToEdge(tenantId, ruleChainId,
-                    null, edgeId, savedRuleChain, ActionType.ASSIGNED_TO_EDGE,
+            logEntityActionService.logEntityAction(tenantId, ruleChainId, savedRuleChain, null, actionType,
                     user, ruleChainId.toString(), edgeId.toString(), edge.getName());
             return savedRuleChain;
         } catch (Exception e) {
-            notificationEntityService.logEntityAction(tenantId, emptyId(EntityType.RULE_CHAIN),
-                    ActionType.ASSIGNED_TO_EDGE, user, e, ruleChainId.toString(), edgeId.toString());
+            logEntityActionService.logEntityAction(tenantId, emptyId(EntityType.RULE_CHAIN),
+                    actionType, user, e, ruleChainId.toString(), edgeId.toString());
             throw e;
         }
     }
 
     @Override
     public RuleChain unassignRuleChainFromEdge(TenantId tenantId, RuleChain ruleChain, Edge edge, User user) throws ThingsboardException {
+        ActionType actionType = ActionType.UNASSIGNED_FROM_EDGE;
         RuleChainId ruleChainId = ruleChain.getId();
         EdgeId edgeId = edge.getId();
         try {
             RuleChain savedRuleChain = checkNotNull(ruleChainService.unassignRuleChainFromEdge(tenantId, ruleChainId, edgeId, false));
-            notificationEntityService.notifyAssignOrUnassignEntityToEdge(tenantId, ruleChainId,
-                    null, edgeId, savedRuleChain, ActionType.UNASSIGNED_FROM_EDGE,
+            logEntityActionService.logEntityAction(tenantId, ruleChainId, savedRuleChain, null, actionType,
                     user, ruleChainId.toString(), edgeId.toString(), edge.getName());
             return savedRuleChain;
         } catch (Exception e) {
-            notificationEntityService.logEntityAction(tenantId, emptyId(EntityType.RULE_CHAIN),
-                    ActionType.UNASSIGNED_FROM_EDGE, user, e, ruleChainId, edgeId);
+            logEntityActionService.logEntityAction(tenantId, emptyId(EntityType.RULE_CHAIN),
+                    actionType, user, e, ruleChainId, edgeId);
             throw e;
         }
     }
@@ -367,10 +325,10 @@ public class DefaultTbRuleChainService extends AbstractTbEntityService implement
         RuleChainId ruleChainId = ruleChain.getId();
         try {
             ruleChainService.setEdgeTemplateRootRuleChain(tenantId, ruleChainId);
-            notificationEntityService.logEntityAction(tenantId, ruleChainId, ruleChain, ActionType.UPDATED, user);
+            logEntityActionService.logEntityAction(tenantId, ruleChainId, ruleChain, ActionType.UPDATED, user);
             return ruleChain;
         } catch (Exception e) {
-            notificationEntityService.logEntityAction(tenantId, emptyId(EntityType.RULE_CHAIN), ActionType.UPDATED,
+            logEntityActionService.logEntityAction(tenantId, emptyId(EntityType.RULE_CHAIN), ActionType.UPDATED,
                     user, e, ruleChainId.toString());
             throw e;
         }
@@ -381,10 +339,10 @@ public class DefaultTbRuleChainService extends AbstractTbEntityService implement
         RuleChainId ruleChainId = ruleChain.getId();
         try {
             ruleChainService.setAutoAssignToEdgeRuleChain(tenantId, ruleChainId);
-            notificationEntityService.logEntityAction(tenantId, ruleChainId, ruleChain, ActionType.UPDATED, user);
+            logEntityActionService.logEntityAction(tenantId, ruleChainId, ruleChain, ActionType.UPDATED, user);
             return ruleChain;
         } catch (Exception e) {
-            notificationEntityService.logEntityAction(tenantId, emptyId(EntityType.RULE_CHAIN), ActionType.UPDATED,
+            logEntityActionService.logEntityAction(tenantId, emptyId(EntityType.RULE_CHAIN), ActionType.UPDATED,
                     user, e, ruleChainId.toString());
             throw e;
         }
@@ -395,13 +353,42 @@ public class DefaultTbRuleChainService extends AbstractTbEntityService implement
         RuleChainId ruleChainId = ruleChain.getId();
         try {
             ruleChainService.unsetAutoAssignToEdgeRuleChain(tenantId, ruleChainId);
-            notificationEntityService.logEntityAction(tenantId, ruleChainId, ruleChain, ActionType.UPDATED, user);
+            logEntityActionService.logEntityAction(tenantId, ruleChainId, ruleChain, ActionType.UPDATED, user);
             return ruleChain;
         } catch (Exception e) {
-            notificationEntityService.logEntityAction(tenantId, emptyId(EntityType.RULE_CHAIN), ActionType.UPDATED,
+            logEntityActionService.logEntityAction(tenantId, emptyId(EntityType.RULE_CHAIN), ActionType.UPDATED,
                     user, e, ruleChainId.toString());
             throw e;
         }
+    }
+
+    @Override
+    public RuleNode updateRuleNodeConfiguration(RuleNode node) {
+        var ruleChainId = node.getRuleChainId();
+        var ruleNodeId = node.getId();
+        var ruleNodeType = node.getType();
+        try {
+            var ruleNodeClass = componentDiscoveryService.getRuleNodeInfo(ruleNodeType)
+                    .orElseThrow(() -> new RuntimeException("Rule node " + ruleNodeType + " is not supported!"));
+            if (ruleNodeClass.isVersioned()) {
+                int fromVersion = node.getConfigurationVersion();
+                int toVersion = ruleNodeClass.getCurrentVersion();
+                if (fromVersion < toVersion) {
+                    log.debug("Going to upgrade rule node with id: {} type: {} fromVersion: {} toVersion: {}",
+                            ruleNodeId, ruleNodeType, fromVersion, toVersion);
+                    TbNodeUpgradeUtils.upgradeConfigurationAndVersion(node, ruleNodeClass);
+                    log.debug("Successfully upgrade rule node with id: {} type: {}, rule chain id: {} fromVersion: {} toVersion: {}",
+                            ruleNodeId, ruleNodeType, ruleChainId, fromVersion, toVersion);
+                } else {
+                    log.debug("Rule node with id: {} type: {} ruleChainId: {} already set to latest version!",
+                            ruleNodeId, ruleChainId, ruleNodeType);
+                }
+            }
+        } catch (Exception e) {
+            log.error("Failed to upgrade rule node with id: {} type: {}, rule chain id: {}",
+                    ruleNodeId, ruleNodeType, ruleChainId, e);
+        }
+        return node;
     }
 
     private Set<RuleChainId> updateRelatedRuleChains(TenantId tenantId, RuleChainId ruleChainId, Map<String, String> labelsMap) {

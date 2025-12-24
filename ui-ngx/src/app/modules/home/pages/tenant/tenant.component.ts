@@ -1,5 +1,5 @@
 ///
-/// Copyright © 2016-2023 The Thingsboard Authors
+/// Copyright © 2016-2025 The Thingsboard Authors
 ///
 /// Licensed under the Apache License, Version 2.0 (the "License");
 /// you may not use this file except in compliance with the License.
@@ -17,13 +17,14 @@
 import { ChangeDetectorRef, Component, Inject } from '@angular/core';
 import { Store } from '@ngrx/store';
 import { AppState } from '@core/core.state';
-import { FormBuilder, FormGroup, Validators } from '@angular/forms';
+import { UntypedFormBuilder, UntypedFormGroup, Validators } from '@angular/forms';
 import { Tenant, TenantInfo } from '@app/shared/models/tenant.model';
 import { ActionNotificationShow } from '@app/core/notification/notification.actions';
 import { TranslateService } from '@ngx-translate/core';
 import { ContactBasedComponent } from '../../components/entity/contact-based.component';
 import { EntityTableConfig } from '@home/models/entity/entities-table-config.models';
 import { isDefinedAndNotNull } from '@core/utils';
+import { CountryData } from '@shared/models/country.models';
 
 @Component({
   selector: 'tb-tenant',
@@ -36,9 +37,10 @@ export class TenantComponent extends ContactBasedComponent<TenantInfo> {
               protected translate: TranslateService,
               @Inject('entity') protected entityValue: TenantInfo,
               @Inject('entitiesTableConfig') protected entitiesTableConfigValue: EntityTableConfig<TenantInfo>,
-              protected fb: FormBuilder,
-              protected cd: ChangeDetectorRef) {
-    super(store, fb, entityValue, entitiesTableConfigValue, cd);
+              protected fb: UntypedFormBuilder,
+              protected cd: ChangeDetectorRef,
+              protected countryData: CountryData) {
+    super(store, fb, entityValue, entitiesTableConfigValue, cd, countryData);
   }
 
   hideDelete() {
@@ -49,7 +51,7 @@ export class TenantComponent extends ContactBasedComponent<TenantInfo> {
     }
   }
 
-  buildEntityForm(entity: TenantInfo): FormGroup {
+  buildEntityForm(entity: TenantInfo): UntypedFormGroup {
     return this.fb.group(
       {
         title: [entity ? entity.title : '', [Validators.required, Validators.maxLength(255)]],
@@ -99,6 +101,6 @@ export class TenantComponent extends ContactBasedComponent<TenantInfo> {
   }
 
   onTenantProfileUpdated() {
-    this.entitiesTableConfig.updateData(false);
+    this.entitiesTableConfig.updateData(false, false);
   }
 }

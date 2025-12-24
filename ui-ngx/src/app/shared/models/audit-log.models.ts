@@ -1,5 +1,5 @@
 ///
-/// Copyright © 2016-2023 The Thingsboard Authors
+/// Copyright © 2016-2025 The Thingsboard Authors
 ///
 /// Licensed under the Apache License, Version 2.0 (the "License");
 /// you may not use this file except in compliance with the License.
@@ -20,6 +20,7 @@ import { CustomerId } from './id/customer-id';
 import { EntityId } from './id/entity-id';
 import { UserId } from './id/user-id';
 import { TenantId } from './id/tenant-id';
+import { isArraysEqualIgnoreUndefined } from "@core/utils";
 
 export enum AuditLogMode {
   TENANT,
@@ -47,6 +48,12 @@ export enum ActionType {
   RELATIONS_DELETED = 'RELATIONS_DELETED',
   ALARM_ACK = 'ALARM_ACK',
   ALARM_CLEAR = 'ALARM_CLEAR',
+  ALARM_ASSIGNED = 'ALARM_ASSIGNED',
+  ALARM_DELETE = 'ALARM_DELETE',
+  ALARM_UNASSIGNED = 'ALARM_UNASSIGNED',
+  ADDED_COMMENT = 'ADDED_COMMENT',
+  UPDATED_COMMENT = 'UPDATED_COMMENT',
+  DELETED_COMMENT = 'DELETED_COMMENT',
   LOGIN = 'LOGIN',
   LOGOUT = 'LOGOUT',
   LOCKOUT = 'LOCKOUT',
@@ -57,7 +64,8 @@ export enum ActionType {
   TIMESERIES_UPDATED = 'TIMESERIES_UPDATED',
   TIMESERIES_DELETED = 'TIMESERIES_DELETED',
   ASSIGNED_TO_EDGE = 'ASSIGNED_TO_EDGE',
-  UNASSIGNED_FROM_EDGE = 'UNASSIGNED_FROM_EDGE'
+  UNASSIGNED_FROM_EDGE = 'UNASSIGNED_FROM_EDGE',
+  SMS_SENT = 'SMS_SENT'
 }
 
 export enum ActionStatus {
@@ -85,6 +93,12 @@ export const actionTypeTranslations = new Map<ActionType, string>(
     [ActionType.RELATIONS_DELETED, 'audit-log.type-relations-delete'],
     [ActionType.ALARM_ACK, 'audit-log.type-alarm-ack'],
     [ActionType.ALARM_CLEAR, 'audit-log.type-alarm-clear'],
+    [ActionType.ALARM_DELETE, 'audit-log.type-alarm-delete'],
+    [ActionType.ALARM_ASSIGNED, 'audit-log.type-alarm-assign'],
+    [ActionType.ALARM_UNASSIGNED, 'audit-log.type-alarm-unassign'],
+    [ActionType.ADDED_COMMENT, 'audit-log.type-added-comment'],
+    [ActionType.UPDATED_COMMENT, 'audit-log.type-updated-comment'],
+    [ActionType.DELETED_COMMENT, 'audit-log.type-deleted-comment'],
     [ActionType.LOGIN, 'audit-log.type-login'],
     [ActionType.LOGOUT, 'audit-log.type-logout'],
     [ActionType.LOCKOUT, 'audit-log.type-lockout'],
@@ -95,7 +109,8 @@ export const actionTypeTranslations = new Map<ActionType, string>(
     [ActionType.TIMESERIES_UPDATED, 'audit-log.type-timeseries-updated'],
     [ActionType.TIMESERIES_DELETED, 'audit-log.type-timeseries-deleted'],
     [ActionType.ASSIGNED_TO_EDGE, 'audit-log.type-assigned-to-edge'],
-    [ActionType.UNASSIGNED_FROM_EDGE, 'audit-log.type-unassigned-from-edge']
+    [ActionType.UNASSIGNED_FROM_EDGE, 'audit-log.type-unassigned-from-edge'],
+    [ActionType.SMS_SENT, 'audit-log.type-sms-sent'],
   ]
 );
 
@@ -118,3 +133,11 @@ export interface AuditLog extends BaseData<AuditLogId> {
   actionStatus: ActionStatus;
   actionFailureDetails: string;
 }
+
+export interface AuditLogFilter {
+  actionTypes: string[];
+}
+
+export const auditLogFilterEquals = (filter1?: AuditLogFilter, filter2?: AuditLogFilter): boolean => {
+  return isArraysEqualIgnoreUndefined(filter1.actionTypes, filter2.actionTypes);
+};

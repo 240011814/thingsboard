@@ -1,5 +1,5 @@
 ///
-/// Copyright © 2016-2023 The Thingsboard Authors
+/// Copyright © 2016-2025 The Thingsboard Authors
 ///
 /// Licensed under the Apache License, Version 2.0 (the "License");
 /// you may not use this file except in compliance with the License.
@@ -16,9 +16,11 @@
 
 import { ChangeDetectorRef, Component, Input, OnDestroy, OnInit } from '@angular/core';
 import { PageComponent } from '@shared/components/page.component';
-import { FormBuilder, FormGroup, Validators } from '@angular/forms';
+import { UntypedFormBuilder, UntypedFormGroup, Validators } from '@angular/forms';
 import {
+  entityTypesWithoutRelatedData,
   SingleEntityVersionCreateRequest,
+  typesWithCalculatedFields,
   VersionCreateRequestType,
   VersionCreationResult
 } from '@shared/models/vc.models';
@@ -58,9 +60,11 @@ export class EntityVersionCreateComponent extends PageComponent implements OnIni
   @Input()
   popoverComponent: TbPopoverComponent;
 
-  createVersionFormGroup: FormGroup;
+  createVersionFormGroup: UntypedFormGroup;
 
   entityTypes = EntityType;
+
+  entityTypesWithoutRelatedData = entityTypesWithoutRelatedData;
 
   resultMessage: string;
 
@@ -68,11 +72,13 @@ export class EntityVersionCreateComponent extends PageComponent implements OnIni
 
   private versionCreateResultSubscription: Subscription;
 
+  readonly typesWithCalculatedFields = typesWithCalculatedFields;
+
   constructor(protected store: Store<AppState>,
               private entitiesVersionControlService: EntitiesVersionControlService,
               private cd: ChangeDetectorRef,
               private translate: TranslateService,
-              private fb: FormBuilder) {
+              private fb: UntypedFormBuilder) {
     super(store);
   }
 
@@ -83,7 +89,8 @@ export class EntityVersionCreateComponent extends PageComponent implements OnIni
         {entityName: this.entityName}), [Validators.required, Validators.pattern(/(?:.|\s)*\S(&:.|\s)*/)]],
       saveRelations: [false, []],
       saveAttributes: [true, []],
-      saveCredentials: [true, []]
+      saveCredentials: [true, []],
+      saveCalculatedFields: [true, []]
     });
   }
 
@@ -108,9 +115,12 @@ export class EntityVersionCreateComponent extends PageComponent implements OnIni
         branch: this.createVersionFormGroup.get('branch').value,
         versionName: this.createVersionFormGroup.get('versionName').value,
         config: {
-          saveRelations: this.createVersionFormGroup.get('saveRelations').value,
-          saveAttributes: this.createVersionFormGroup.get('saveAttributes').value,
-          saveCredentials: this.entityId.entityType === EntityType.DEVICE ? this.createVersionFormGroup.get('saveCredentials').value : false
+          saveRelations: !entityTypesWithoutRelatedData.has(this.entityId.entityType)
+            ? this.createVersionFormGroup.get('saveRelations').value : false,
+          saveAttributes: !entityTypesWithoutRelatedData.has(this.entityId.entityType)
+            ? this.createVersionFormGroup.get('saveAttributes').value : false,
+          saveCredentials: this.entityId.entityType === EntityType.DEVICE ? this.createVersionFormGroup.get('saveCredentials').value : false,
+          saveCalculatedFields: typesWithCalculatedFields.has(this.entityId.entityType) ? this.createVersionFormGroup.get('saveCalculatedFields').value : false,
         },
         type: VersionCreateRequestType.SINGLE_ENTITY
       };

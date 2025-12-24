@@ -1,5 +1,5 @@
 /**
- * Copyright © 2016-2023 The Thingsboard Authors
+ * Copyright © 2016-2025 The Thingsboard Authors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,21 +19,22 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.thingsboard.server.cache.limits.RateLimitService;
 import org.thingsboard.server.common.data.EntityType;
 import org.thingsboard.server.common.data.ExportableEntity;
 import org.thingsboard.server.common.data.audit.ActionType;
 import org.thingsboard.server.common.data.exception.ThingsboardErrorCode;
 import org.thingsboard.server.common.data.exception.ThingsboardException;
 import org.thingsboard.server.common.data.id.EntityId;
+import org.thingsboard.server.common.data.limit.LimitedApi;
 import org.thingsboard.server.common.data.relation.EntityRelation;
-import org.thingsboard.server.common.data.sync.ThrowingRunnable;
 import org.thingsboard.server.common.data.sync.ie.EntityExportData;
 import org.thingsboard.server.common.data.sync.ie.EntityImportResult;
-import org.thingsboard.server.dao.exception.DataValidationException;
+import org.thingsboard.server.common.data.util.ThrowingRunnable;
+import org.thingsboard.server.exception.DataValidationException;
 import org.thingsboard.server.dao.relation.RelationService;
 import org.thingsboard.server.queue.util.TbCoreComponent;
-import org.thingsboard.server.service.apiusage.RateLimitService;
-import org.thingsboard.server.service.entitiy.TbNotificationEntityService;
+import org.thingsboard.server.service.entitiy.TbLogEntityActionService;
 import org.thingsboard.server.service.sync.ie.exporting.EntityExportService;
 import org.thingsboard.server.service.sync.ie.exporting.impl.BaseEntityExportService;
 import org.thingsboard.server.service.sync.ie.exporting.impl.DefaultEntityExportService;
@@ -61,18 +62,20 @@ public class DefaultEntitiesExportImportService implements EntitiesExportImportS
 
     private final RelationService relationService;
     private final RateLimitService rateLimitService;
-    private final TbNotificationEntityService entityNotificationService;
+    private final TbLogEntityActionService logEntityActionService;
 
     protected static final List<EntityType> SUPPORTED_ENTITY_TYPES = List.of(
-            EntityType.CUSTOMER, EntityType.ASSET_PROFILE, EntityType.ASSET, EntityType.RULE_CHAIN,
-            EntityType.DASHBOARD, EntityType.DEVICE_PROFILE, EntityType.DEVICE,
-            EntityType.ENTITY_VIEW, EntityType.WIDGETS_BUNDLE
+            EntityType.CUSTOMER, EntityType.RULE_CHAIN, EntityType.TB_RESOURCE,
+            EntityType.DASHBOARD, EntityType.ASSET_PROFILE, EntityType.ASSET,
+            EntityType.DEVICE_PROFILE, EntityType.OTA_PACKAGE, EntityType.DEVICE,
+            EntityType.ENTITY_VIEW, EntityType.WIDGET_TYPE, EntityType.WIDGETS_BUNDLE,
+            EntityType.NOTIFICATION_TEMPLATE, EntityType.NOTIFICATION_TARGET, EntityType.NOTIFICATION_RULE,
+            EntityType.AI_MODEL
     );
-
 
     @Override
     public <E extends ExportableEntity<I>, I extends EntityId> EntityExportData<E> exportEntity(EntitiesExportCtx<?> ctx, I entityId) throws ThingsboardException {
-        if (!rateLimitService.checkEntityExportLimit(ctx.getTenantId())) {
+        if (!rateLimitService.checkRateLimit(LimitedApi.ENTITY_EXPORT, ctx.getTenantId())) {
             throw new ThingsboardException("Rate limit for entities export is exceeded", ThingsboardErrorCode.TOO_MANY_REQUESTS);
         }
 
@@ -84,7 +87,7 @@ public class DefaultEntitiesExportImportService implements EntitiesExportImportS
 
     @Override
     public <E extends ExportableEntity<I>, I extends EntityId> EntityImportResult<E> importEntity(EntitiesImportCtx ctx, EntityExportData<E> exportData) throws ThingsboardException {
-        if (!rateLimitService.checkEntityImportLimit(ctx.getTenantId())) {
+        if (!rateLimitService.checkRateLimit(LimitedApi.ENTITY_IMPORT, ctx.getTenantId())) {
             throw new ThingsboardException("Rate limit for entities import is exceeded", ThingsboardErrorCode.TOO_MANY_REQUESTS);
         }
         if (exportData.getEntity() == null || exportData.getEntity().getId() == null) {
@@ -98,7 +101,11 @@ public class DefaultEntitiesExportImportService implements EntitiesExportImportS
         ctx.putInternalId(exportData.getExternalId(), importResult.getSavedEntity().getId());
 
         ctx.addReferenceCallback(exportData.getExternalId(), importResult.getSaveReferencesCallback());
-        ctx.addEventCallback(importResult.getSendEventsCallback());
+        if (ctx.isRollbackOnError()) {
+            ctx.addEventCallback(importResult.getSendEventsCallback());
+        } else {
+            importResult.getSendEventsCallback().run();
+        }
         return importResult;
     }
 
@@ -117,17 +124,15 @@ public class DefaultEntitiesExportImportService implements EntitiesExportImportS
         relationService.saveRelations(ctx.getTenantId(), new ArrayList<>(ctx.getRelations()));
 
         for (EntityRelation relation : ctx.getRelations()) {
-            entityNotificationService.notifyRelation(ctx.getTenantId(), null,
-                    relation, ctx.getUser(), ActionType.RELATION_ADD_OR_UPDATE, relation);
+            logEntityActionService.logEntityRelationAction(ctx.getTenantId(), null,
+                    relation, ctx.getUser(), ActionType.RELATION_ADD_OR_UPDATE, null, relation);
         }
     }
-
 
     @Override
     public Comparator<EntityType> getEntityTypeComparatorForImport() {
         return Comparator.comparing(SUPPORTED_ENTITY_TYPES::indexOf);
     }
-
 
     @SuppressWarnings("unchecked")
     private <I extends EntityId, E extends ExportableEntity<I>, D extends EntityExportData<E>> EntityExportService<I, E, D> getExportService(EntityType entityType) {

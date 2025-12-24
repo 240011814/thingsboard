@@ -1,5 +1,5 @@
 /**
- * Copyright © 2016-2023 The Thingsboard Authors
+ * Copyright © 2016-2025 The Thingsboard Authors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,11 +17,13 @@ package org.thingsboard.server.transport.lwm2m.server.store;
 
 import lombok.extern.slf4j.Slf4j;
 import org.eclipse.leshan.core.SecurityMode;
+import org.eclipse.leshan.core.peer.OscoreIdentity;
 import org.eclipse.leshan.server.security.NonUniqueSecurityInfoException;
 import org.eclipse.leshan.server.security.SecurityInfo;
 import org.thingsboard.server.transport.lwm2m.secure.LwM2mCredentialsSecurityInfoValidator;
 import org.thingsboard.server.transport.lwm2m.secure.TbLwM2MSecurityInfo;
 import org.thingsboard.server.transport.lwm2m.server.client.LwM2MAuthException;
+
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Set;
@@ -59,7 +61,7 @@ public class TbLwM2mSecurityStore implements TbMainSecurityStore {
         if (securityInfo == null) {
             securityInfo = fetchAndPutSecurityInfo(endpoint);
         } else if (securityInfo.usePSK() && securityInfo.getEndpoint().equals(SecurityMode.NO_SEC.toString())
-                && securityInfo.getIdentity().equals(SecurityMode.NO_SEC.toString())
+                && securityInfo.getPskIdentity().equals(SecurityMode.NO_SEC.toString())
                 && Arrays.equals(SecurityMode.NO_SEC.toString().getBytes(), securityInfo.getPreSharedKey())) {
             return null;
         }
@@ -78,6 +80,11 @@ public class TbLwM2mSecurityStore implements TbMainSecurityStore {
             }
         }
         return securityInfo;
+    }
+
+    @Override
+    public SecurityInfo getByOscoreIdentity(OscoreIdentity oscoreIdentity) {
+        return null;
     }
 
     public SecurityInfo fetchAndPutSecurityInfo(String credentialsId) {

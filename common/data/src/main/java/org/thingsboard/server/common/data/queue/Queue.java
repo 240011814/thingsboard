@@ -1,5 +1,5 @@
 /**
- * Copyright © 2016-2023 The Thingsboard Authors
+ * Copyright © 2016-2025 The Thingsboard Authors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,18 +15,22 @@
  */
 package org.thingsboard.server.common.data.queue;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.databind.JsonNode;
 import lombok.Data;
+import org.thingsboard.server.common.data.BaseDataWithAdditionalInfo;
 import org.thingsboard.server.common.data.HasName;
 import org.thingsboard.server.common.data.HasTenantId;
-import org.thingsboard.server.common.data.SearchTextBasedWithAdditionalInfo;
 import org.thingsboard.server.common.data.id.QueueId;
 import org.thingsboard.server.common.data.id.TenantId;
 import org.thingsboard.server.common.data.tenant.profile.TenantProfileQueueConfiguration;
 import org.thingsboard.server.common.data.validation.Length;
 import org.thingsboard.server.common.data.validation.NoXss;
 
+import java.util.Optional;
+
 @Data
-public class Queue extends SearchTextBasedWithAdditionalInfo<QueueId> implements HasName, HasTenantId {
+public class Queue extends BaseDataWithAdditionalInfo<QueueId> implements HasName, HasTenantId, QueueConfig {
     private TenantId tenantId;
     @NoXss
     @Length(fieldName = "name")
@@ -61,8 +65,19 @@ public class Queue extends SearchTextBasedWithAdditionalInfo<QueueId> implements
         setAdditionalInfo(queueConfiguration.getAdditionalInfo());
     }
 
-    @Override
-    public String getSearchText() {
-        return getName();
+
+    @JsonIgnore
+    public String getCustomProperties() {
+        return Optional.ofNullable(getAdditionalInfo())
+                .map(info -> info.get("customProperties"))
+                .filter(JsonNode::isTextual).map(JsonNode::asText).orElse(null);
     }
+
+    @JsonIgnore
+    public boolean isDuplicateMsgToAllPartitions() {
+        return Optional.ofNullable(getAdditionalInfo())
+                .map(info -> info.get("duplicateMsgToAllPartitions"))
+                .filter(JsonNode::isBoolean).map(JsonNode::asBoolean).orElse(false);
+    }
+
 }

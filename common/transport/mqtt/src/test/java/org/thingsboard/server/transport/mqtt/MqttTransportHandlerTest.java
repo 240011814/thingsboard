@@ -1,5 +1,5 @@
 /**
- * Copyright © 2016-2023 The Thingsboard Authors
+ * Copyright © 2016-2025 The Thingsboard Authors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,27 +16,36 @@
 package org.thingsboard.server.transport.mqtt;
 
 import io.netty.buffer.ByteBuf;
-import io.netty.buffer.EmptyByteBuf;
-import io.netty.buffer.PooledByteBufAllocator;
+import io.netty.buffer.Unpooled;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.handler.codec.mqtt.MqttConnectMessage;
 import io.netty.handler.codec.mqtt.MqttConnectPayload;
 import io.netty.handler.codec.mqtt.MqttConnectVariableHeader;
 import io.netty.handler.codec.mqtt.MqttFixedHeader;
-import io.netty.handler.codec.mqtt.MqttMessage;
 import io.netty.handler.codec.mqtt.MqttMessageType;
 import io.netty.handler.codec.mqtt.MqttPublishMessage;
 import io.netty.handler.codec.mqtt.MqttPublishVariableHeader;
 import io.netty.handler.codec.mqtt.MqttQoS;
 import io.netty.handler.ssl.SslHandler;
 import lombok.extern.slf4j.Slf4j;
-import org.junit.After;
-import org.junit.Before;
-import org.junit.Test;
-import org.junit.runner.RunWith;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
-import org.mockito.junit.MockitoJUnitRunner;
+import org.mockito.Spy;
+import org.mockito.junit.jupiter.MockitoExtension;
 import org.thingsboard.common.util.ThingsBoardThreadFactory;
+import org.thingsboard.server.common.data.DataConstants;
+import org.thingsboard.server.common.data.DeviceProfile;
+import org.thingsboard.server.common.data.DeviceTransportType;
+import org.thingsboard.server.common.data.device.profile.DeviceProfileData;
+import org.thingsboard.server.common.data.device.profile.JsonTransportPayloadConfiguration;
+import org.thingsboard.server.common.data.device.profile.MqttDeviceProfileTransportConfiguration;
+import org.thingsboard.server.common.msg.TbMsgMetaData;
+import org.thingsboard.server.common.transport.TransportService;
+import org.thingsboard.server.gen.transport.TransportProtos;
+import org.thingsboard.server.transport.mqtt.adaptors.JsonMqttAdaptor;
 
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
@@ -49,22 +58,24 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
+import static org.assertj.core.api.Assertions.fail;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.contains;
 import static org.hamcrest.Matchers.empty;
 import static org.hamcrest.Matchers.greaterThan;
 import static org.hamcrest.Matchers.is;
-import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.willDoNothing;
-import static org.mockito.BDDMockito.willReturn;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 @Slf4j
-@RunWith(MockitoJUnitRunner.class)
+@ExtendWith(MockitoExtension.class)
 public class MqttTransportHandlerTest {
 
     public static final int MSG_QUEUE_LIMIT = 10;
@@ -82,15 +93,20 @@ public class MqttTransportHandlerTest {
     ExecutorService executor;
     MqttTransportHandler handler;
 
-    @Before
+    @Spy
+    TransportService transportService;
+
+    @BeforeEach
     public void setUp() throws Exception {
-        willReturn(MSG_QUEUE_LIMIT).given(context).getMessageQueueSizePerDeviceLimit();
+
+        lenient().doReturn(MSG_QUEUE_LIMIT).when(context).getMessageQueueSizePerDeviceLimit();
+        lenient().doReturn(transportService).when(context).getTransportService();
 
         handler = spy(new MqttTransportHandler(context, sslHandler));
-        willReturn(IP_ADDR).given(handler).getAddress(any());
+        lenient().doReturn(IP_ADDR).when(handler).getAddress(any());
     }
 
-    @After
+    @AfterEach
     public void tearDown() {
         if (executor != null) {
             executor.shutdownNow();
@@ -105,9 +121,17 @@ public class MqttTransportHandlerTest {
     }
 
     MqttPublishMessage getMqttPublishMessage() {
+        return getMqttPublishMessage("v1/gateway/telemetry");
+    }
+
+    MqttPublishMessage getDeviceMqttPublishMessage() {
+        return getMqttPublishMessage("v1/devices/me/telemetry");
+    }
+
+    MqttPublishMessage getMqttPublishMessage(String topicName) {
         MqttFixedHeader mqttFixedHeader = new MqttFixedHeader(MqttMessageType.PUBLISH, true, MqttQoS.AT_LEAST_ONCE, false, 123);
-        MqttPublishVariableHeader variableHeader = new MqttPublishVariableHeader("v1/gateway/telemetry", packedId.incrementAndGet());
-        ByteBuf payload = new EmptyByteBuf(new PooledByteBufAllocator());
+        MqttPublishVariableHeader variableHeader = new MqttPublishVariableHeader(topicName, packedId.incrementAndGet());
+        ByteBuf payload = Unpooled.wrappedBuffer("{\"testKey\":\"testValue\"}".getBytes());
         return new MqttPublishMessage(mqttFixedHeader, variableHeader, payload);
     }
 
@@ -204,6 +228,28 @@ public class MqttTransportHandlerTest {
         assertThat(handler.deviceSessionCtx.getMsgQueueSnapshot(), empty());
         verify(handler, times(MSG_QUEUE_LIMIT)).processRegularSessionMsg(any(), any());
         messages.forEach((msg) -> verify(handler, times(1)).processRegularSessionMsg(ctx, msg));
+    }
+
+    @Test
+    public void givenMqttMessage_whenDeviceProfileMqttTransport_thenTopicAddedToMetadata() {
+        MqttPublishMessage message = getDeviceMqttPublishMessage();
+        when(context.getJsonMqttAdaptor()).thenReturn(new JsonMqttAdaptor());
+        handler.deviceSessionCtx.setConnected(true);
+        DeviceProfile deviceProfile = new DeviceProfile();
+        DeviceProfileData deviceProfileData = new DeviceProfileData();
+        MqttDeviceProfileTransportConfiguration mqttDeviceProfileTransportConfiguration = new MqttDeviceProfileTransportConfiguration();
+        mqttDeviceProfileTransportConfiguration.setTransportPayloadTypeConfiguration(new JsonTransportPayloadConfiguration());
+        deviceProfileData.setTransportConfiguration(mqttDeviceProfileTransportConfiguration);
+        deviceProfile.setProfileData(deviceProfileData);
+        deviceProfile.setTransportType(DeviceTransportType.MQTT);
+        handler.deviceSessionCtx.setDeviceProfile(deviceProfile);
+
+        handler.processRegularSessionMsg(ctx, message);
+
+        TbMsgMetaData expectedMd = new TbMsgMetaData();
+        expectedMd.putValue(DataConstants.MQTT_TOPIC, message.variableHeader().topicName());
+
+        verify(transportService, times(1)).process(any(), (TransportProtos.PostTelemetryMsg) any(), eq(expectedMd), any());
     }
 
 }

@@ -1,5 +1,5 @@
 ///
-/// Copyright © 2016-2023 The Thingsboard Authors
+/// Copyright © 2016-2025 The Thingsboard Authors
 ///
 /// Licensed under the Apache License, Version 2.0 (the "License");
 /// you may not use this file except in compliance with the License.
@@ -17,8 +17,8 @@
 import { Component, ElementRef, EventEmitter, forwardRef, Input, OnInit, Output, ViewChild } from '@angular/core';
 import {
   ControlValueAccessor,
-  FormBuilder,
-  FormGroup,
+  UntypedFormBuilder,
+  UntypedFormGroup,
   NG_VALIDATORS,
   NG_VALUE_ACCESSOR,
   ValidationErrors,
@@ -31,9 +31,10 @@ import { distinctUntilChanged, filter, mergeMap, share, tap } from 'rxjs/operato
 import { ObjectLwM2M, PAGE_SIZE_LIMIT } from './lwm2m-profile-config.models';
 import { DeviceProfileService } from '@core/http/device-profile.service';
 import { Direction } from '@shared/models/page/sort-order';
-import { isDefined, isDefinedAndNotNull, isString } from '@core/utils';
+import { isDefined, isDefinedAndNotNull, isObject, isString } from '@core/utils';
 import { PageLink } from '@shared/models/page/page-link';
-import { TruncatePipe } from '@shared/pipe/truncate.pipe';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { MatAutocompleteTrigger } from '@angular/material/autocomplete';
 
 @Component({
   selector: 'tb-profile-lwm2m-object-list',
@@ -56,7 +57,7 @@ export class Lwm2mObjectListComponent implements ControlValueAccessor, OnInit, V
   private requiredValue: boolean;
   private dirty = false;
 
-  lwm2mListFormGroup: FormGroup;
+  lwm2mListFormGroup: UntypedFormGroup;
   objectsList: Array<ObjectLwM2M> = [];
   filteredObjectsList: Observable<Array<ObjectLwM2M>>;
   disabled = false;
@@ -78,24 +79,27 @@ export class Lwm2mObjectListComponent implements ControlValueAccessor, OnInit, V
   @Output()
   removeList = new EventEmitter<any>();
 
-  @ViewChild('objectInput') objectInput: ElementRef<HTMLInputElement>;
+  @ViewChild('objectInput', {static: true}) objectInput: ElementRef<HTMLInputElement>;
+  @ViewChild('objectInput', {static: true, read: MatAutocompleteTrigger}) matAutocompleteTrigger: MatAutocompleteTrigger;
 
-  private propagateChange = (v: any) => {
-  }
+  private propagateChange: (value: any) => void = () => {};
 
-  constructor(public truncate: TruncatePipe,
-              private deviceProfileService: DeviceProfileService,
-              private fb: FormBuilder) {
+  constructor(private deviceProfileService: DeviceProfileService,
+              private fb: UntypedFormBuilder) {
     this.lwm2mListFormGroup = this.fb.group({
       objectsList: [this.objectsList],
       objectLwm2m: ['']
     });
-    this.lwm2mListFormGroup.valueChanges.subscribe((value) => {
-      let formValue = null;
-      if (this.lwm2mListFormGroup.valid) {
-        formValue = value.objectsList;
+    this.lwm2mListFormGroup.get('objectsList').valueChanges.pipe(
+      takeUntilDestroyed()
+    ).subscribe((value) => {
+      if (!value.length || (value.length && isObject(value[0]))) {
+        let formValue = null;
+        if (this.lwm2mListFormGroup.valid) {
+          formValue = value;
+        }
+        this.propagateChange(formValue);
       }
-      this.propagateChange(formValue);
     });
   }
 
@@ -108,7 +112,7 @@ export class Lwm2mObjectListComponent implements ControlValueAccessor, OnInit, V
     this.propagateChange = fn;
   }
 
-  registerOnTouched(fn: any): void {
+  registerOnTouched(_fn: any): void {
   }
 
   ngOnInit() {
@@ -134,6 +138,9 @@ export class Lwm2mObjectListComponent implements ControlValueAccessor, OnInit, V
       this.lwm2mListFormGroup.disable({emitEvent: false});
       if (isDefined(this.objectInput)) {
         this.clear('', false);
+      }
+      if (this.matAutocompleteTrigger.panelOpen) {
+        this.matAutocompleteTrigger.closePanel();
       }
     } else {
       this.lwm2mListFormGroup.enable({emitEvent: false});
@@ -185,7 +192,7 @@ export class Lwm2mObjectListComponent implements ControlValueAccessor, OnInit, V
   private fetchListObjects = (searchText: string): Observable<Array<ObjectLwM2M>> =>  {
     this.searchText = searchText;
     const pageLink = new PageLink(PAGE_SIZE_LIMIT, 0, this.searchText, {
-      property: 'id',
+      property: 'resourceKey',
       direction: Direction.ASC
     });
     return this.deviceProfileService.getLwm2mObjectsPage(pageLink);

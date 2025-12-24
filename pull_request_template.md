@@ -12,7 +12,7 @@ Put your PR description here instead of this sentence.
 - [ ] Description contains brief notes about what needs to be added to the documentation.
 - [ ] No merge conflicts, commented blocks of code, code formatting issues.
 - [ ] Changes are backward compatible or upgrade script is provided.
-- [ ] Similar PR is opened for PE version to simplify merge. Required for internal contributors only.
+- [ ] Similar PR is opened for PE version to simplify merge. Crosslinks between PRs added. Required for internal contributors only.
   
 ## Front-End feature checklist
 
@@ -26,6 +26,7 @@ Put your PR description here instead of this sentence.
 - [ ] If new dependency was added: the dependency tree is checked for conflicts.
 - [ ] If new service was added: the service is marked with corresponding @TbCoreComponent, @TbRuleEngineComponent, @TbTransportComponent, etc.
 - [ ] If new REST API was added: the RestClient.java was updated, issue for [Python REST client](https://github.com/thingsboard/thingsboard-python-rest-client) is created.
+- [ ] If new yml property was added: make sure a description is added (above or near the property).
 
 
 

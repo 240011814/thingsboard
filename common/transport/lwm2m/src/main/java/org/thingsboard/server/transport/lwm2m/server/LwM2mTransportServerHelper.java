@@ -1,5 +1,5 @@
 /**
- * Copyright © 2016-2023 The Thingsboard Authors
+ * Copyright © 2016-2025 The Thingsboard Authors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,15 +16,16 @@
 package org.thingsboard.server.transport.lwm2m.server;
 
 import com.google.gson.JsonParser;
+import jakarta.annotation.Nonnull;
+import jakarta.annotation.Nullable;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.eclipse.leshan.core.model.DDFFileParser;
-import org.eclipse.leshan.core.model.DefaultDDFFileValidator;
 import org.eclipse.leshan.core.model.InvalidDDFFileException;
 import org.eclipse.leshan.core.model.ObjectModel;
 import org.eclipse.leshan.core.model.ResourceModel;
 import org.eclipse.leshan.core.node.codec.CodecException;
 import org.springframework.stereotype.Component;
+import org.thingsboard.server.common.data.util.TbDDFFileParser;
 import org.thingsboard.server.common.transport.TransportServiceCallback;
 import org.thingsboard.server.common.transport.auth.ValidateDeviceCredentialsResponse;
 import org.thingsboard.server.gen.transport.TransportProtos;
@@ -33,11 +34,11 @@ import org.thingsboard.server.gen.transport.TransportProtos.PostTelemetryMsg;
 import org.thingsboard.server.gen.transport.TransportProtos.SessionInfoProto;
 import org.thingsboard.server.queue.util.TbLwM2mTransportComponent;
 
-import javax.annotation.Nonnull;
-import javax.annotation.Nullable;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
+import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicLong;
@@ -51,7 +52,6 @@ import static org.thingsboard.server.gen.transport.TransportProtos.KeyValueType.
 public class LwM2mTransportServerHelper {
 
     private final LwM2mTransportContext context;
-    private final static JsonParser JSON_PARSER = new JsonParser();
 
     public void sendParametersOnThingsboardAttribute(List<TransportProtos.KeyValueProto> result, SessionInfoProto sessionInfo) {
         PostAttributeMsg.Builder request = PostAttributeMsg.newBuilder();
@@ -60,12 +60,12 @@ public class LwM2mTransportServerHelper {
         context.getTransportService().process(sessionInfo, postAttributeMsg, TransportServiceCallback.EMPTY);
     }
 
-    public void sendParametersOnThingsboardTelemetry(List<TransportProtos.KeyValueProto> kvList, SessionInfoProto sessionInfo) {
-        sendParametersOnThingsboardTelemetry(kvList, sessionInfo, null);
+    public void sendParametersOnThingsboardTelemetry(List<TransportProtos.KeyValueProto> kvList, SessionInfoProto sessionInfo, @Nullable Map<String, AtomicLong> keyTsLatestMaps){
+        sendParametersOnThingsboardTelemetry(kvList, sessionInfo, keyTsLatestMaps, null);
     }
 
-    public void sendParametersOnThingsboardTelemetry(List<TransportProtos.KeyValueProto> kvList, SessionInfoProto sessionInfo, @Nullable Map<String, AtomicLong> keyTsLatestMap) {
-        TransportProtos.TsKvListProto tsKvList = toTsKvList(kvList, keyTsLatestMap);
+    public void sendParametersOnThingsboardTelemetry(List<TransportProtos.KeyValueProto> kvList, SessionInfoProto sessionInfo, @Nullable Map<String, AtomicLong> keyTsLatestMap, @Nullable Instant ts) {
+        TransportProtos.TsKvListProto tsKvList = toTsKvList(kvList, keyTsLatestMap, ts);
 
         PostTelemetryMsg postTelemetryMsg = PostTelemetryMsg.newBuilder()
                 .addTsKvList(tsKvList)
@@ -74,9 +74,9 @@ public class LwM2mTransportServerHelper {
         context.getTransportService().process(sessionInfo, postTelemetryMsg, TransportServiceCallback.EMPTY);
     }
 
-    TransportProtos.TsKvListProto toTsKvList(List<TransportProtos.KeyValueProto> kvList, Map<String, AtomicLong> keyTsLatestMap) {
+    TransportProtos.TsKvListProto toTsKvList(List<TransportProtos.KeyValueProto> kvList, Map<String, AtomicLong> keyTsLatestMap, @Nullable Instant ts) {
         return TransportProtos.TsKvListProto.newBuilder()
-                .setTs(getTs(kvList, keyTsLatestMap))
+                .setTs(ts == null ? getTs(kvList, keyTsLatestMap) : ts.toEpochMilli())
                 .addAllKv(kvList)
                 .build();
     }
@@ -142,9 +142,9 @@ public class LwM2mTransportServerHelper {
                 .build();
     }
 
-    public ObjectModel parseFromXmlToObjectModel(byte[] xmlByte, String streamName, DefaultDDFFileValidator ddfValidator) {
+    public ObjectModel parseFromXmlToObjectModel(byte[] xmlByte, String streamName) {
         try {
-            DDFFileParser ddfFileParser = new DDFFileParser(ddfValidator);
+            TbDDFFileParser ddfFileParser = new TbDDFFileParser();
             return ddfFileParser.parse(new ByteArrayInputStream(xmlByte), streamName).get(0);
         } catch (IOException | InvalidDDFFileException e) {
             log.error("Could not parse the XML file [{}]", streamName, e);
@@ -181,8 +181,16 @@ public class LwM2mTransportServerHelper {
                 case BOOLEAN:
                     kvProto.setType(BOOLEAN_V).setBoolV((Boolean) value).build();
                     break;
-                case STRING:
                 case TIME:
+                    if (value instanceof Date) {
+                        kvProto.setType(TransportProtos.KeyValueType.LONG_V).setLongV(((Date) value).getTime());
+                    } else if (value instanceof Integer || value instanceof Long) {
+                        kvProto.setType(TransportProtos.KeyValueType.LONG_V).setLongV((long) (value));
+                    } else {
+                        kvProto.setType(TransportProtos.KeyValueType.STRING_V).setStringV(value.toString());
+                    }
+                    break;
+                case STRING:
                 case OPAQUE:
                 case OBJLNK:
                     kvProto.setType(TransportProtos.KeyValueType.STRING_V).setStringV((String) value);
@@ -232,7 +240,7 @@ public class LwM2mTransportServerHelper {
                 return kv.getStringV();
             case JSON_V:
                 try {
-                    return JSON_PARSER.parse(kv.getJsonV());
+                    return JsonParser.parseString(kv.getJsonV());
                 } catch (Exception e) {
                     return null;
                 }

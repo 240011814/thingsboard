@@ -1,5 +1,5 @@
 /**
- * Copyright © 2016-2023 The Thingsboard Authors
+ * Copyright © 2016-2025 The Thingsboard Authors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,16 +19,18 @@ import org.springframework.stereotype.Component;
 import org.thingsboard.server.common.data.DashboardInfo;
 import org.thingsboard.server.common.data.HasCustomerId;
 import org.thingsboard.server.common.data.HasTenantId;
+import org.thingsboard.server.common.data.TbResourceInfo;
 import org.thingsboard.server.common.data.User;
+import org.thingsboard.server.common.data.id.ApiKeyId;
 import org.thingsboard.server.common.data.id.DashboardId;
 import org.thingsboard.server.common.data.id.EntityId;
+import org.thingsboard.server.common.data.id.TbResourceId;
 import org.thingsboard.server.common.data.id.UserId;
+import org.thingsboard.server.common.data.pat.ApiKeyInfo;
 import org.thingsboard.server.common.data.security.Authority;
 import org.thingsboard.server.service.security.model.SecurityUser;
 
-import static org.thingsboard.server.service.security.permission.TenantAdminPermissions.propertyEntityPermissionChecker;
-
-@Component(value = "customerUserPermissions")
+@Component
 public class CustomerUserPermissions extends AbstractPermissions {
 
     public CustomerUserPermissions() {
@@ -46,6 +48,9 @@ public class CustomerUserPermissions extends AbstractPermissions {
         put(Resource.RPC, rpcPermissionChecker);
         put(Resource.DEVICE_PROFILE, profilePermissionChecker);
         put(Resource.ASSET_PROFILE, profilePermissionChecker);
+        put(Resource.TB_RESOURCE, customerResourcePermissionChecker);
+        put(Resource.MOBILE_APP_SETTINGS, new PermissionChecker.GenericPermissionChecker(Operation.READ));
+        put(Resource.API_KEY, apiKeysPermissionChecker);
         put(Resource.PROPERTY,propertyEntityPermissionChecker);
     }
 
@@ -98,6 +103,26 @@ public class CustomerUserPermissions extends AbstractPermissions {
 
             };
 
+    private static final PermissionChecker customerResourcePermissionChecker =
+            new PermissionChecker<TbResourceId, TbResourceInfo>() {
+
+                @Override
+                @SuppressWarnings("unchecked")
+                public boolean hasPermission(SecurityUser user, Operation operation, TbResourceId resourceId, TbResourceInfo resource) {
+                    if (operation != Operation.READ) {
+                        return false;
+                    }
+                    if (resource.getResourceType() == null || !resource.getResourceType().isCustomerAccess()) {
+                        return false;
+                    }
+                    if (resource.getTenantId() == null || resource.getTenantId().isNullUid()) {
+                        return true;
+                    }
+                    return user.getTenantId().equals(resource.getTenantId());
+                }
+
+            };
+
     private static final PermissionChecker customerDashboardPermissionChecker =
             new PermissionChecker.GenericPermissionChecker<DashboardId, DashboardInfo>(Operation.READ, Operation.READ_ATTRIBUTES, Operation.READ_TELEMETRY) {
 
@@ -122,6 +147,15 @@ public class CustomerUserPermissions extends AbstractPermissions {
             if (!Authority.CUSTOMER_USER.equals(userEntity.getAuthority())) {
                 return false;
             }
+
+            if (!user.getCustomerId().equals(userEntity.getCustomerId())) {
+                return false;
+            }
+
+            if (Operation.READ.equals(operation)) {
+                return true;
+            }
+
             return user.getId().equals(userId);
         }
 
@@ -172,4 +206,19 @@ public class CustomerUserPermissions extends AbstractPermissions {
             return user.getTenantId().equals(entity.getTenantId());
         }
     };
+
+    private static final PermissionChecker apiKeysPermissionChecker = new PermissionChecker<ApiKeyId, ApiKeyInfo>() {
+
+        @Override
+        public boolean hasPermission(SecurityUser user, Operation operation) {
+            return true;
+        }
+
+        @Override
+        @SuppressWarnings("unchecked")
+        public boolean hasPermission(SecurityUser user, Operation operation, ApiKeyId entityId, ApiKeyInfo entity) {
+            return user.getTenantId().equals(entity.getTenantId());
+        }
+    };
+
 }

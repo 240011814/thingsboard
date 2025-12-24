@@ -1,5 +1,5 @@
 ///
-/// Copyright © 2016-2023 The Thingsboard Authors
+/// Copyright © 2016-2025 The Thingsboard Authors
 ///
 /// Licensed under the Apache License, Version 2.0 (the "License");
 /// you may not use this file except in compliance with the License.
@@ -14,46 +14,44 @@
 /// limitations under the License.
 ///
 
-// tslint:disable-next-line:no-reference
-/// <reference path="../../../../src/typings/rawloader.typings.d.ts" />
-
-import { Inject, Injectable, NgZone } from '@angular/core';
+import { Inject, Injectable, NgZone, Renderer2 } from '@angular/core';
 import { WINDOW } from '@core/services/window.service';
-import { ExceptionData } from '@app/shared/models/error.models';
+import { ExceptionData, parseException } from '@app/shared/models/error.models';
 import {
+  base64toObj,
+  base64toString,
   baseUrl,
   createLabelFromDatasource,
   deepClone,
-  deleteNullProperties,
   guid,
+  hashCode,
   isDefined,
   isDefinedAndNotNull,
   isString,
-  isUndefined
+  isUndefined,
+  objToBase64,
+  objToBase64URI
 } from '@core/utils';
 import { WindowMessage } from '@shared/models/window-message.model';
 import { TranslateService } from '@ngx-translate/core';
 import { customTranslationsPrefix, i18nPrefix } from '@app/shared/models/constants';
 import { DataKey, Datasource, DatasourceType, KeyInfo } from '@shared/models/widget.models';
-import { EntityType } from '@shared/models/entity-type.models';
-import { DataKeyType } from '@app/shared/models/telemetry/telemetry.models';
-import { alarmFields } from '@shared/models/alarm.models';
+import { DataKeyType, SharedTelemetrySubscriber } from '@app/shared/models/telemetry/telemetry.models';
+import { alarmFields, alarmSeverityTranslations, alarmStatusTranslations } from '@shared/models/alarm.models';
 import { materialColors } from '@app/shared/models/material.models';
 import { WidgetInfo } from '@home/models/widget-component.models';
-import jsonSchemaDefaults from 'json-schema-defaults';
-import materialIconsCodepoints from '!raw-loader!./material-icons-codepoints.raw';
-import { Observable, of, ReplaySubject } from 'rxjs';
+import { Observable } from 'rxjs';
 import { publishReplay, refCount } from 'rxjs/operators';
 import { WidgetContext } from '@app/modules/home/models/widget-component.models';
-import {
-  AttributeData,
-  LatestTelemetry,
-  TelemetrySubscriber,
-  TelemetryType
-} from '@shared/models/telemetry/telemetry.models';
+import { AttributeData, LatestTelemetry, TelemetryType } from '@shared/models/telemetry/telemetry.models';
 import { EntityId } from '@shared/models/id/entity-id';
+import { DatePipe, DOCUMENT } from '@angular/common';
+import { entityTypeTranslations } from '@shared/models/entity-type.models';
+import cssjs from '@core/css/css';
+import { isNotEmptyTbFunction } from '@shared/models/js-function.models';
+import { defaultFormProperties, FormProperty } from '@shared/models/dynamic-form.models';
 
-const i18nRegExp = new RegExp(`{${i18nPrefix}:[^{}]+}`, 'g');
+const i18nRegExp = new RegExp(`{${i18nPrefix}:([^{}]+)}`, 'g');
 
 const predefinedFunctions: { [func: string]: string } = {
   Sin: 'return Math.round(1000*Math.sin(time/5000));',
@@ -82,13 +80,6 @@ const defaultAlarmFields: Array<string> = [
   alarmFields.status.keyName
 ];
 
-const commonMaterialIcons: Array<string> = ['more_horiz', 'more_vert', 'open_in_new',
-  'visibility', 'play_arrow', 'arrow_back', 'arrow_downward',
-  'arrow_forward', 'arrow_upwards', 'close', 'refresh', 'menu', 'show_chart', 'multiline_chart', 'pie_chart', 'insert_chart', 'people',
-  'person', 'domain', 'devices_other', 'now_widgets', 'dashboards', 'map', 'pin_drop', 'my_location', 'extension', 'search',
-  'settings', 'notifications', 'notifications_active', 'info', 'info_outline', 'warning', 'list', 'file_download', 'import_export',
-  'share', 'add', 'edit', 'done'];
-
 // @dynamic
 @Injectable({
   providedIn: 'root'
@@ -106,7 +97,6 @@ export class UtilsService {
     color: this.getMaterialColor(0),
     funcBody: this.getPredefinedFunctionBody('Sin'),
     settings: {},
-    _hash: Math.random()
   };
 
   defaultDatasource: Datasource = {
@@ -117,10 +107,10 @@ export class UtilsService {
 
   defaultAlarmDataKeys: Array<DataKey> = [];
 
-  materialIcons: Array<string> = [];
-
   constructor(@Inject(WINDOW) private window: Window,
+              @Inject(DOCUMENT) private document: Document,
               private zone: NgZone,
+              private datePipe: DatePipe,
               private translate: TranslateService) {
     let frame: Element = null;
     try {
@@ -146,10 +136,10 @@ export class UtilsService {
     return predefinedFunctions[func];
   }
 
-  public getDefaultDatasource(dataKeySchema: any): Datasource {
+  public getDefaultDatasource(dataKeyForm: FormProperty[]): Datasource {
     const datasource = deepClone(this.defaultDatasource);
-    if (isDefined(dataKeySchema)) {
-      datasource.dataKeys[0].settings = this.generateObjectFromJsonSchema(dataKeySchema);
+    if (dataKeyForm?.length) {
+      datasource.dataKeys[0].settings = defaultFormProperties(dataKeyForm);
     }
     return datasource;
   }
@@ -162,8 +152,7 @@ export class UtilsService {
         type: DataKeyType.alarm,
         label: this.translate.instant(alarmFields[name].name),
         color: this.getMaterialColor(i),
-        settings: {},
-        _hash: Math.random()
+        settings: {}
       };
       this.defaultAlarmDataKeys.push(dataKey);
     }
@@ -176,14 +165,33 @@ export class UtilsService {
     return deepClone(this.defaultAlarmDataKeys);
   }
 
-  public generateObjectFromJsonSchema(schema: any): any {
-    const obj = jsonSchemaDefaults(schema);
-    deleteNullProperties(obj);
-    return obj;
+  public defaultAlarmFieldContent(key: DataKey | {name: string}, value: any): string {
+    if (isDefined(value)) {
+      const alarmField = alarmFields[key.name];
+      if (alarmField) {
+        if (alarmField.time) {
+          return value ? this.datePipe.transform(value, 'yyyy-MM-dd HH:mm:ss') : '';
+        } else if (alarmField === alarmFields.severity) {
+          return this.translate.instant(alarmSeverityTranslations.get(value));
+        } else if (alarmField === alarmFields.status) {
+          return alarmStatusTranslations.get(value) ? this.translate.instant(alarmStatusTranslations.get(value)) : value;
+        } else if (alarmField === alarmFields.originatorType) {
+          return this.translate.instant(entityTypeTranslations.get(value).type);
+        } else if (alarmField.value === alarmFields.assignee.value) {
+          return '';
+        }
+      }
+      return value;
+    }
+    return '';
   }
 
   public processWidgetException(exception: any): ExceptionData {
     const data = this.parseException(exception, -6);
+    if (data.message?.startsWith('NG0')) {
+       data.message = `${this.translate.instant('widget.widget-template-error')}<br/>
+                       <br/><i>${this.translate.instant('dialog.error-message-title')}</i><br/><br/>${data.message}`;
+    }
     if (this.widgetEditMode) {
       const message: WindowMessage = {
         type: 'widgetException',
@@ -195,60 +203,24 @@ export class UtilsService {
   }
 
   public parseException(exception: any, lineOffset?: number): ExceptionData {
-    const data: ExceptionData = {};
-    if (exception) {
-      if (typeof exception === 'string') {
-        data.message = exception;
-      } else if (exception instanceof String) {
-        data.message = exception.toString();
-      } else {
-        if (exception.name) {
-          data.name = exception.name;
-        } else {
-          data.name = 'UnknownError';
-        }
-        if (exception.message) {
-          data.message = exception.message;
-        }
-        if (exception.lineNumber) {
-          data.lineNumber = exception.lineNumber;
-          if (exception.columnNumber) {
-            data.columnNumber = exception.columnNumber;
-          }
-        } else if (exception.stack) {
-          const lineInfoRegexp = /(.*<anonymous>):(\d*)(:)?(\d*)?/g;
-          const lineInfoGroups = lineInfoRegexp.exec(exception.stack);
-          if (lineInfoGroups != null && lineInfoGroups.length >= 3) {
-            if (isUndefined(lineOffset)) {
-              lineOffset = -2;
-            }
-            data.lineNumber = Number(lineInfoGroups[2]) + lineOffset;
-            if (lineInfoGroups.length >= 5) {
-              data.columnNumber = Number(lineInfoGroups[4]);
-            }
-          }
-        }
-      }
-    }
-    return data;
+    return parseException(exception, lineOffset);
   }
 
-  public customTranslation(translationValue: string, defaultValue: string): string {
-    if (translationValue && isString(translationValue)) {
-      if (translationValue.includes(`{${i18nPrefix}`)) {
-        const matches = translationValue.match(i18nRegExp);
-        let result = translationValue;
-        for (const match of matches) {
-          const translationId = match.substring(6, match.length - 1);
-          result = result.replace(match, this.doTranslate(translationId, match));
-        }
-        return result;
-      } else {
-        return this.doTranslate(translationValue, defaultValue, customTranslationsPrefix);
-      }
-    } else {
+  public customTranslation(translationValue: string, defaultValue: string = translationValue): string {
+    if (!translationValue || !isString(translationValue)) {
       return translationValue;
     }
+    if (!translationValue.includes(`{${i18nPrefix}:`)) {
+      return this.doTranslate(translationValue, defaultValue, customTranslationsPrefix);
+    }
+    const matches = translationValue.matchAll(i18nRegExp);
+    let result = translationValue;
+    for (const [fullMatch, translationId] of matches) {
+      if (translationId) {
+        result = result.replace(fullMatch, this.doTranslate(translationId, fullMatch));
+      }
+    }
+    return result;
   }
 
   private doTranslate(translationValue: string, defaultValue: string, prefix?: string): string {
@@ -272,61 +244,6 @@ export class UtilsService {
     return guid();
   }
 
-  public validateDatasources(datasources: Array<Datasource>): Array<Datasource> {
-    datasources.forEach((datasource) => {
-      // @ts-ignore
-      if (datasource.type === 'device') {
-        datasource.type = DatasourceType.entity;
-        datasource.entityType = EntityType.DEVICE;
-        if (datasource.deviceId) {
-          datasource.entityId = datasource.deviceId;
-        } else if (datasource.deviceAliasId) {
-          datasource.entityAliasId = datasource.deviceAliasId;
-        }
-        if (datasource.deviceName) {
-          datasource.entityName = datasource.deviceName;
-        }
-      }
-      if (datasource.type === DatasourceType.entity && datasource.entityId) {
-        datasource.name = datasource.entityName;
-      }
-      if (!datasource.dataKeys) {
-        datasource.dataKeys = [];
-      }
-      datasource.dataKeys.forEach(dataKey => {
-        if (isUndefined(dataKey.label)) {
-          dataKey.label = dataKey.name;
-        }
-      });
-    });
-    return datasources;
-  }
-
-  public getMaterialIcons(): Observable<Array<string>> {
-    if (this.materialIcons.length) {
-      return of(this.materialIcons);
-    } else {
-      const materialIconsSubject = new ReplaySubject<Array<string>>();
-      this.zone.runOutsideAngular(() => {
-        const codepointsArray = materialIconsCodepoints
-          .split('\n')
-          .filter((codepoint) => codepoint && codepoint.length);
-        codepointsArray.forEach((codepoint) => {
-          const values = codepoint.split(' ');
-          if (values && values.length === 2) {
-            this.materialIcons.push(values[0]);
-          }
-        });
-        materialIconsSubject.next(this.materialIcons);
-      });
-      return materialIconsSubject.asObservable();
-    }
-  }
-
-  public getCommonMaterialIcons(): Array<string> {
-    return commonMaterialIcons;
-  }
-
   public getMaterialColor(index: number) {
     const colorIndex = index % materialColors.length;
     return materialColors[colorIndex].value;
@@ -348,8 +265,7 @@ export class UtilsService {
       type,
       label,
       funcBody: keyInfo.funcBody,
-      settings: {},
-      _hash: Math.random()
+      settings: {}
     };
     if (keyInfo.units) {
       dataKey.units = keyInfo.units;
@@ -362,7 +278,7 @@ export class UtilsService {
     } else if (index > -1) {
       dataKey.color = this.getMaterialColor(index);
     }
-    if (keyInfo.postFuncBody && keyInfo.postFuncBody.length) {
+    if (isNotEmptyTbFunction(keyInfo.postFuncBody)) {
       dataKey.usePostProcessing = true;
       dataKey.postFuncBody = keyInfo.postFuncBody;
     }
@@ -405,13 +321,19 @@ export class UtilsService {
     });
   }
 
+  public stringToHslColor(str: string, saturationPercentage: number, lightnessPercentage: number): string {
+    if (str && str.length) {
+      const hue = hashCode(str) % 360;
+      return `hsl(${hue}, ${saturationPercentage}%, ${lightnessPercentage}%)`;
+    }
+  }
+
   public currentPerfTime(): number {
     return this.window.performance && this.window.performance.now ?
       this.window.performance.now() : Date.now();
   }
 
-  public getQueryParam(name: string): string {
-    const url = this.window.location.href;
+  public getQueryParam(name: string, url = this.window.location.href): string {
     name = name.replace(/[\[\]]/g, '\\$&');
     const regex = new RegExp('[?&]' + name + '(=([^&#]*)|&|#|$)');
     const results = regex.exec(url);
@@ -481,6 +403,10 @@ export class UtilsService {
     return isDefined(value);
   }
 
+  public isDefinedAndNotNull(value: any): boolean {
+    return isDefinedAndNotNull(value);
+  }
+
   public defaultValue(value: any, defaultValue: any): any {
     if (isDefinedAndNotNull(value)) {
       return value;
@@ -500,15 +426,52 @@ export class UtilsService {
     if (!entityId && ctx.datasources.length > 0) {
       entityId = this.getEntityIdFromDatasource(ctx.datasources[0]);
     }
-    const subscription = TelemetrySubscriber.createEntityAttributesSubscription(ctx.telemetryWsService, entityId, type, ctx.ngZone, keys);
+    const subscription = SharedTelemetrySubscriber.createEntityAttributesSubscription(ctx.telemetryWsService, entityId, type, ctx.ngZone, keys);
     if (!ctx.telemetrySubscribers) {
       ctx.telemetrySubscribers = [];
     }
     ctx.telemetrySubscribers.push(subscription);
     subscription.subscribe();
-    return subscription.attributeData$().pipe(
+    return subscription.attributeData$.pipe(
       publishReplay(1),
       refCount()
     );
   }
+
+  public objToBase64(obj: any): string {
+    return objToBase64(obj);
+  }
+
+  public base64toString(b64Encoded: string): string {
+    return base64toString(b64Encoded);
+  }
+
+  public objToBase64URI(obj: any): string {
+    return objToBase64URI(obj);
+  }
+
+  public base64toObj(b64Encoded: string): any {
+    return base64toObj(b64Encoded);
+  }
+
+  public applyCssToElement(renderer: Renderer2, element: any, cssClassPrefix: string, css: string): string {
+    const cssParser = new cssjs();
+    cssParser.testMode = false;
+    const cssClass = `${cssClassPrefix}-${guid()}`;
+    cssParser.cssPreviewNamespace = cssClass;
+    cssParser.createStyleElement(cssClass, css);
+    renderer.addClass(element, cssClass);
+    return cssClass;
+  }
+
+  public clearCssElement(renderer: Renderer2, cssClass: string, element?: any): void {
+    if (element) {
+      renderer.removeClass(element, cssClass);
+    }
+    const el = this.document.getElementById(cssClass);
+    if (el) {
+      el.parentNode.removeChild(el);
+    }
+  }
+
 }

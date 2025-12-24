@@ -1,5 +1,5 @@
 /**
- * Copyright © 2016-2023 The Thingsboard Authors
+ * Copyright © 2016-2025 The Thingsboard Authors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,7 +17,6 @@ package org.thingsboard.server.common.transport.config.ssl;
 
 import lombok.Data;
 import lombok.EqualsAndHashCode;
-import lombok.Getter;
 import org.bouncycastle.asn1.pkcs.PrivateKeyInfo;
 import org.bouncycastle.cert.X509CertificateHolder;
 import org.bouncycastle.cert.jcajce.JcaX509CertificateConverter;
@@ -30,6 +29,7 @@ import org.bouncycastle.openssl.jcajce.JcaPEMKeyConverter;
 import org.bouncycastle.openssl.jcajce.JcePEMDecryptorProviderBuilder;
 import org.thingsboard.server.common.data.ResourceUtils;
 import org.thingsboard.server.common.data.StringUtils;
+
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
@@ -46,7 +46,7 @@ import java.util.List;
 import java.util.stream.Collectors;
 
 @Data
-@EqualsAndHashCode(callSuper = false)
+@EqualsAndHashCode(callSuper = true)
 public class PemSslCredentials extends AbstractSslCredentials {
 
     private static final String DEFAULT_KEY_ALIAS = "server";
@@ -72,7 +72,7 @@ public class PemSslCredentials extends AbstractSslCredentials {
         try (InputStream inStream = ResourceUtils.getInputStream(this, this.certFile)) {
             try (PEMParser pemParser = new PEMParser(new InputStreamReader(inStream))) {
                 Object object;
-                while((object = pemParser.readObject()) != null) {
+                while ((object = pemParser.readObject()) != null) {
                     if (object instanceof X509CertificateHolder) {
                         X509Certificate x509Cert = certConverter.getCertificate((X509CertificateHolder) object);
                         certificates.add(x509Cert);

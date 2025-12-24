@@ -1,5 +1,5 @@
 ///
-/// Copyright © 2016-2023 The Thingsboard Authors
+/// Copyright © 2016-2025 The Thingsboard Authors
 ///
 /// Licensed under the Apache License, Version 2.0 (the "License");
 /// you may not use this file except in compliance with the License.
@@ -25,7 +25,7 @@ import {
   ViewChild,
   ViewEncapsulation
 } from '@angular/core';
-import { ControlValueAccessor, FormControl, NG_VALIDATORS, NG_VALUE_ACCESSOR, Validator } from '@angular/forms';
+import { ControlValueAccessor, UntypedFormControl, NG_VALIDATORS, NG_VALUE_ACCESSOR, Validator } from '@angular/forms';
 import { Ace } from 'ace-builds';
 import { getAce } from '@shared/models/ace/ace.models';
 import { coerceBooleanProperty } from '@angular/cdk/coercion';
@@ -34,7 +34,6 @@ import { AppState } from '@core/core.state';
 import { UtilsService } from '@core/services/utils.service';
 import { TranslateService } from '@ngx-translate/core';
 import { CancelAnimationFrame, RafService } from '@core/services/raf.service';
-import { ResizeObserver } from '@juggle/resize-observer';
 import { beautifyHtml } from '@shared/models/beautify.models';
 
 @Component({
@@ -127,7 +126,17 @@ export class HtmlComponent implements OnInit, OnDestroy, ControlValueAccessor, V
         });
         // @ts-ignore
         this.htmlEditor.session.on('changeAnnotation', () => {
-          const annotations = this.htmlEditor.session.getAnnotations();
+          const annotations = this.htmlEditor.session.getAnnotations() || [];
+          const length = annotations.length;
+          let i = length;
+          while (i--) {
+            if(annotations[i].text.includes('Named entity expected')) {
+              annotations.splice(i, 1);
+            }
+          }
+          if (length > annotations.length) {
+            this.htmlEditor.session.setAnnotations(annotations);
+          }
           const hasErrors = annotations.filter(annotation => annotation.type === 'error').length > 0;
           if (this.hasErrors !== hasErrors) {
             this.hasErrors = hasErrors;
@@ -177,7 +186,7 @@ export class HtmlComponent implements OnInit, OnDestroy, ControlValueAccessor, V
     }
   }
 
-  public validate(c: FormControl) {
+  public validate(c: UntypedFormControl) {
     return (!this.hasErrors) ? null : {
       html: {
         valid: false,

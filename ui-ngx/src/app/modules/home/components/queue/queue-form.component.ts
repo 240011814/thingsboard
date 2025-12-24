@@ -1,5 +1,5 @@
 ///
-/// Copyright © 2016-2023 The Thingsboard Authors
+/// Copyright © 2016-2025 The Thingsboard Authors
 ///
 /// Licensed under the Apache License, Version 2.0 (the "License");
 /// you may not use this file except in compliance with the License.
@@ -14,12 +14,12 @@
 /// limitations under the License.
 ///
 
-import { Component, forwardRef, Input, OnDestroy, OnInit } from '@angular/core';
+import { Component, DestroyRef, forwardRef, Input, OnDestroy, OnInit } from '@angular/core';
 import {
   ControlValueAccessor,
-  FormBuilder,
-  FormControl,
-  FormGroup,
+  UntypedFormBuilder,
+  UntypedFormControl,
+  UntypedFormGroup,
   NG_VALIDATORS,
   NG_VALUE_ACCESSOR,
   Validator,
@@ -35,6 +35,7 @@ import {
 } from '@shared/models/queue.models';
 import { isDefinedAndNotNull } from '@core/utils';
 import { Subscription } from 'rxjs';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 
 @Component({
   selector: 'tb-queue-form',
@@ -53,7 +54,7 @@ import { Subscription } from 'rxjs';
     }
   ]
 })
-export class QueueFormComponent implements ControlValueAccessor, OnInit, OnDestroy, Validator {
+export class QueueFormComponent implements ControlValueAccessor, OnInit, Validator {
 
   @Input()
   disabled: boolean;
@@ -64,7 +65,7 @@ export class QueueFormComponent implements ControlValueAccessor, OnInit, OnDestr
   @Input()
   systemQueue = false;
 
-  queueFormGroup: FormGroup;
+  queueFormGroup: UntypedFormGroup;
   hideBatchSize = false;
 
   queueSubmitStrategyTypes = QueueSubmitStrategyTypes;
@@ -77,10 +78,10 @@ export class QueueFormComponent implements ControlValueAccessor, OnInit, OnDestr
   private modelValue: QueueInfo;
   private propagateChange = null;
   private propagateChangePending = false;
-  private valueChange$: Subscription = null;
 
   constructor(private utils: UtilsService,
-              private fb: FormBuilder) {
+              private fb: UntypedFormBuilder,
+              private destroyRef: DestroyRef) {
   }
 
   registerOnChange(fn: any): void {
@@ -117,30 +118,26 @@ export class QueueFormComponent implements ControlValueAccessor, OnInit, OnDestr
         }),
         topic: [''],
         additionalInfo: this.fb.group({
-          description: ['']
+          description: [''],
+          customProperties: [''],
+          duplicateMsgToAllPartitions: [false]
         })
       });
-    this.valueChange$ = this.queueFormGroup.valueChanges.subscribe(() => {
+    this.queueFormGroup.valueChanges.pipe(
+      takeUntilDestroyed(this.destroyRef)
+    ).subscribe(() => {
       this.updateModel();
     });
-    this.queueFormGroup.get('name').valueChanges.subscribe((value) => {
+    this.queueFormGroup.get('name').valueChanges.pipe(
+      takeUntilDestroyed(this.destroyRef)
+    ).subscribe((value) => {
       this.queueFormGroup.patchValue({topic: `tb_rule_engine.${value}`});
     });
-    this.queueFormGroup.get('submitStrategy').get('type').valueChanges.subscribe(() => {
+    this.queueFormGroup.get('submitStrategy').get('type').valueChanges.pipe(
+      takeUntilDestroyed(this.destroyRef)
+    ).subscribe(() => {
       this.submitStrategyTypeChanged();
     });
-    if (this.newQueue) {
-      this.queueFormGroup.get('name').enable({emitEvent: false});
-    } else {
-      this.queueFormGroup.get('name').disable({emitEvent: false});
-    }
-  }
-
-  ngOnDestroy() {
-    if (this.valueChange$) {
-      this.valueChange$.unsubscribe();
-      this.valueChange$ = null;
-    }
   }
 
   setDisabledState(isDisabled: boolean): void {
@@ -149,7 +146,11 @@ export class QueueFormComponent implements ControlValueAccessor, OnInit, OnDestr
       this.queueFormGroup.disable({emitEvent: false});
     } else {
       this.queueFormGroup.enable({emitEvent: false});
-      this.queueFormGroup.get('name').disable({emitEvent: false});
+      if (this.newQueue) {
+        this.queueFormGroup.get('name').enable({emitEvent: false});
+      } else {
+        this.queueFormGroup.get('name').disable({emitEvent: false});
+      }
     }
   }
 
@@ -160,14 +161,18 @@ export class QueueFormComponent implements ControlValueAccessor, OnInit, OnDestr
       this.queueFormGroup.patchValue(this.modelValue, {emitEvent: false});
       this.queueFormGroup.get('additionalInfo').get('description')
         .patchValue(this.modelValue.additionalInfo?.description, {emitEvent: false});
+      this.queueFormGroup.get('additionalInfo').get('customProperties')
+        .patchValue(this.modelValue.additionalInfo?.customProperties, {emitEvent: false});
+      this.queueFormGroup.get('additionalInfo').get('duplicateMsgToAllPartitions')
+        .patchValue(this.modelValue.additionalInfo?.duplicateMsgToAllPartitions, {emitEvent: false});
       this.submitStrategyTypeChanged();
-    }
-    if (!this.disabled && !this.queueFormGroup.valid) {
-      this.updateModel();
+      if (!this.disabled && !this.queueFormGroup.valid) {
+        this.updateModel();
+      }
     }
   }
 
-  public validate(c: FormControl) {
+  public validate(c: UntypedFormControl) {
     if (c.parent && !this.systemQueue) {
       const queueName = c.value.name;
       const profileQueues = [];
@@ -199,11 +204,11 @@ export class QueueFormComponent implements ControlValueAccessor, OnInit, OnDestr
   }
 
   submitStrategyTypeChanged() {
-    const form = this.queueFormGroup.get('submitStrategy') as FormGroup;
+    const form = this.queueFormGroup.get('submitStrategy') as UntypedFormGroup;
     const type: QueueSubmitStrategyTypes = form.get('type').value;
     const batchSizeField = form.get('batchSize');
     if (type === QueueSubmitStrategyTypes.BATCH) {
-      batchSizeField.patchValue(1000, {emitEvent: false});
+      batchSizeField.patchValue(batchSizeField.value ?? 1000, {emitEvent: false});
       batchSizeField.setValidators([Validators.min(1), Validators.required]);
       batchSizeField.updateValueAndValidity({emitEvent: false});
       this.hideBatchSize = true;

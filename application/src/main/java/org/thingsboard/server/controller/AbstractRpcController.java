@@ -1,5 +1,5 @@
 /**
- * Copyright © 2016-2023 The Thingsboard Authors
+ * Copyright © 2016-2025 The Thingsboard Authors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,6 +17,7 @@ package org.thingsboard.server.controller;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.util.concurrent.FutureCallback;
+import jakarta.annotation.Nullable;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
@@ -37,15 +38,14 @@ import org.thingsboard.server.common.data.rpc.RpcError;
 import org.thingsboard.server.common.data.rpc.ToDeviceRpcRequestBody;
 import org.thingsboard.server.common.msg.rpc.FromDeviceRpcResponse;
 import org.thingsboard.server.common.msg.rpc.ToDeviceRpcRequest;
+import org.thingsboard.server.exception.ToErrorResponseEntity;
 import org.thingsboard.server.queue.util.TbCoreComponent;
 import org.thingsboard.server.service.rpc.LocalRequestMetaData;
 import org.thingsboard.server.service.rpc.TbCoreDeviceRpcService;
 import org.thingsboard.server.service.security.AccessValidator;
 import org.thingsboard.server.service.security.model.SecurityUser;
 import org.thingsboard.server.service.security.permission.Operation;
-import org.thingsboard.server.service.telemetry.exception.ToErrorResponseEntity;
 
-import javax.annotation.Nullable;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -122,15 +122,9 @@ public abstract class AbstractRpcController extends BaseController {
             logRpcCall(rpcRequest, rpcError, null);
             RpcError error = rpcError.get();
             switch (error) {
-                case TIMEOUT:
-                    responseWriter.setResult(new ResponseEntity<>(timeoutStatus));
-                    break;
-                case NO_ACTIVE_CONNECTION:
-                    responseWriter.setResult(new ResponseEntity<>(noActiveConnectionStatus));
-                    break;
-                default:
-                    responseWriter.setResult(new ResponseEntity<>(timeoutStatus));
-                    break;
+                case TIMEOUT -> responseWriter.setResult(new ResponseEntity<>(timeoutStatus));
+                case NO_ACTIVE_CONNECTION -> responseWriter.setResult(new ResponseEntity<>(noActiveConnectionStatus));
+                default -> responseWriter.setResult(new ResponseEntity<>(timeoutStatus));
             }
         } else {
             Optional<String> responseData = response.getResponse();

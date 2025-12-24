@@ -1,5 +1,5 @@
 ///
-/// Copyright © 2016-2023 The Thingsboard Authors
+/// Copyright © 2016-2025 The Thingsboard Authors
 ///
 /// Licensed under the Apache License, Version 2.0 (the "License");
 /// you may not use this file except in compliance with the License.
@@ -16,6 +16,7 @@
 
 import { TenantId } from './id/tenant-id';
 import { BaseData, HasId } from '@shared/models/base-data';
+import { getProviderHelpLink, OAuth2Client } from '@shared/models/oauth2.models';
 
 export enum EntityType {
   TENANT = 'TENANT',
@@ -38,7 +39,20 @@ export enum EntityType {
   TB_RESOURCE = 'TB_RESOURCE',
   OTA_PACKAGE = 'OTA_PACKAGE',
   RPC = 'RPC',
-  QUEUE = 'QUEUE'
+  QUEUE = 'QUEUE',
+  QUEUE_STATS = 'QUEUE_STATS',
+  NOTIFICATION = 'NOTIFICATION',
+  NOTIFICATION_REQUEST = 'NOTIFICATION_REQUEST',
+  NOTIFICATION_RULE = 'NOTIFICATION_RULE',
+  NOTIFICATION_TARGET = 'NOTIFICATION_TARGET',
+  NOTIFICATION_TEMPLATE = 'NOTIFICATION_TEMPLATE',
+  OAUTH2_CLIENT = 'OAUTH2_CLIENT',
+  DOMAIN = 'DOMAIN',
+  MOBILE_APP_BUNDLE = 'MOBILE_APP_BUNDLE',
+  MOBILE_APP = 'MOBILE_APP',
+  CALCULATED_FIELD = 'CALCULATED_FIELD',
+  AI_MODEL = 'AI_MODEL',
+  API_KEY = 'API_KEY',
 }
 
 export enum AliasEntityType {
@@ -251,7 +265,7 @@ export const entityTypeTranslations = new Map<EntityType | AliasEntityType, Enti
         typePlural: 'entity.type-alarms',
         list: 'entity.list-of-alarms',
         nameStartsWith: 'entity.alarm-name-starts-with',
-        details: 'dashboard.dashboard-details',
+        details: 'alarm.alarm-details',
         noEntities: 'alarm.no-alarms-prompt',
         search: 'alarm.search',
         selectedEntities: 'alarm.selected-alarms'
@@ -261,6 +275,19 @@ export const entityTypeTranslations = new Map<EntityType | AliasEntityType, Enti
       EntityType.API_USAGE_STATE,
       {
         type: 'entity.type-api-usage-state'
+      }
+    ],
+    [
+      EntityType.WIDGET_TYPE,
+      {
+        type: 'entity.type-widget',
+        typePlural: 'entity.type-widgets',
+        list: 'entity.list-of-widgets',
+        details: 'widget.details',
+        add: 'dashboard.add-widget',
+        noEntities: 'widget.no-widgets-text',
+        search: 'widget.search-widgets',
+        selectedEntities: 'widget.selected-widgets'
       }
     ],
     [
@@ -308,6 +335,8 @@ export const entityTypeTranslations = new Map<EntityType | AliasEntityType, Enti
       EntityType.TB_RESOURCE,
       {
         type: 'entity.type-tb-resource',
+        typePlural: 'entity.type-tb-resources',
+        list: 'entity.list-of-tb-resources',
         details: 'resource.resource-library-details',
         add: 'resource.add',
         noEntities: 'resource.no-resource-text',
@@ -319,6 +348,8 @@ export const entityTypeTranslations = new Map<EntityType | AliasEntityType, Enti
       EntityType.OTA_PACKAGE,
       {
         type: 'entity.type-ota-package',
+        typePlural: 'entity.type-ota-packages',
+        list: 'entity.list-of-ota-packages',
         details: 'ota-update.ota-update-details',
         add: 'ota-update.add',
         noEntities: 'ota-update.no-packages-text',
@@ -327,14 +358,168 @@ export const entityTypeTranslations = new Map<EntityType | AliasEntityType, Enti
       }
     ],
     [
+      EntityType.RPC,
+      {
+        type: 'entity.type-rpc'
+      }
+    ],
+    [
       EntityType.QUEUE,
       {
+        type: 'entity.type-queue',
         add: 'queue.add',
         search: 'queue.search',
         details: 'queue.details',
         selectedEntities: 'queue.selected-queues'
       }
-    ]
+    ],
+    [
+      EntityType.QUEUE_STATS,
+      {
+        type: 'entity.type-queue-stats',
+        typePlural: 'entity.type-queues-stats',
+        list: 'queue-statistics.list-of-queue-statistics',
+        noEntities: 'queue-statistics.no-queue-statistics-text',
+        selectedEntities: 'queue-statistics.selected-queue-statistics',
+        nameStartsWith: 'queue-statistics.queue-statistics-starts-with',
+      }
+    ],
+    [
+      EntityType.NOTIFICATION,
+      {
+        type: 'entity.type-notification',
+        noEntities: 'notification.no-inbox-notification',
+        search: 'notification.search-notification',
+        selectedEntities: 'notification.selected-notifications'
+      }
+    ],
+    [
+      EntityType.NOTIFICATION_REQUEST,
+      {
+        type: 'entity.type-notification-request',
+        noEntities: 'notification.no-notification-request',
+        selectedEntities: 'notification.selected-requests'
+      }
+    ],
+    [
+      EntityType.NOTIFICATION_RULE,
+      {
+        type: 'entity.type-notification-rule',
+        typePlural: 'entity.type-notification-rules',
+        list: 'entity.list-of-notification-rules',
+        noEntities: 'notification.no-rules-notification',
+        search: 'notification.search-rules',
+        selectedEntities: 'notification.selected-rules',
+        add: 'notification.add-rule'
+      }
+    ],
+    [
+      EntityType.NOTIFICATION_TARGET,
+      {
+        type: 'entity.type-notification-target',
+        typePlural: 'entity.type-notification-targets',
+        list: 'entity.list-of-notification-targets',
+        noEntities: 'notification.no-recipients-notification',
+        search: 'notification.search-recipients',
+        selectedEntities: 'notification.selected-recipients',
+        add: 'notification.add-recipients'
+      }
+    ],
+    [
+      EntityType.NOTIFICATION_TEMPLATE,
+      {
+        type: 'entity.type-notification-template',
+        typePlural: 'entity.type-notification-templates',
+        list: 'entity.list-of-notification-templates',
+        noEntities: 'notification.no-notification-templates',
+        search: 'notification.search-templates',
+        selectedEntities: 'notification.selected-template',
+        add: 'notification.add-template'
+      }
+    ],
+    [
+      EntityType.DOMAIN,
+      {
+        type: 'entity.type-domain',
+        typePlural: 'entity.type-domains',
+        list: 'entity.list-of-domains',
+        details: 'admin.oauth2.domain-details',
+        add: 'admin.oauth2.add-domain',
+        noEntities: 'admin.oauth2.no-domains',
+        search: 'admin.oauth2.search-domains'
+      }
+    ],
+    [
+      EntityType.OAUTH2_CLIENT,
+      {
+        type: 'entity.type-oauth2-client',
+        typePlural: 'entity.type-oauth2-clients',
+        list: 'entity.list-of-oauth2-clients',
+        details: 'admin.oauth2.client-details',
+        add: 'admin.oauth2.add-client',
+        noEntities: 'admin.oauth2.no-oauth2-clients',
+        search: 'admin.oauth2.search-oauth2-clients'
+      }
+    ],
+    [
+      EntityType.MOBILE_APP,
+      {
+        type: 'entity.type-mobile-app',
+        typePlural: 'entity.type-mobile-apps',
+        list: 'entity.list-of-mobile-apps',
+        details: 'admin.oauth2.mobile-app-details',
+        add: 'mobile.add-application',
+        noEntities: 'mobile.no-application',
+        search: 'mobile.search-application'
+      }
+    ],
+    [
+      EntityType.MOBILE_APP_BUNDLE,
+      {
+        type: 'entity.type-mobile-app-bundle',
+        typePlural: 'entity.type-mobile-app-bundles',
+        list: 'entity.list-of-mobile-app-bundles',
+        add: 'mobile.add-bundle',
+        noEntities: 'mobile.no-bundles',
+        search: 'mobile.search-bundles'
+      }
+    ],
+    [
+      EntityType.CALCULATED_FIELD,
+      {
+        type: 'entity.type-calculated-field',
+        typePlural: 'entity.type-calculated-fields',
+        list: 'calculated-fields.list',
+        add: 'action.add',
+        noEntities: 'calculated-fields.no-found',
+        search: 'action.search',
+        selectedEntities: 'calculated-fields.selected-fields'
+      }
+    ],
+    [
+      EntityType.AI_MODEL,
+      {
+        type: 'entity.type-ai-model',
+        typePlural: 'entity.type-ai-models',
+        list: 'ai-models.list',
+        add: 'ai-models.add',
+        noEntities: 'ai-models.no-found',
+        search: 'action.search',
+        selectedEntities: 'ai-models.selected-fields'
+      }
+    ],
+    [
+      EntityType.API_KEY,
+      {
+        type: 'entity.type-api-key',
+        typePlural: 'entity.type-api-keys',
+        list: 'api-key.list',
+        add: 'api-key.generate',
+        noEntities: 'api-key.no-found',
+        search: 'api-key.search',
+        selectedEntities: 'api-key.selected-api-keys'
+      }
+    ],
   ]
 );
 
@@ -413,6 +598,12 @@ export const entityTypeResources = new Map<EntityType, EntityTypeResource<BaseDa
       }
     ],
     [
+      EntityType.WIDGET_TYPE,
+      {
+        helpLinkId: 'widgetTypes'
+      }
+    ],
+    [
       EntityType.WIDGETS_BUNDLE,
       {
         helpLinkId: 'widgetsBundles'
@@ -421,7 +612,7 @@ export const entityTypeResources = new Map<EntityType, EntityTypeResource<BaseDa
     [
       EntityType.TB_RESOURCE,
       {
-        helpLinkId: 'resources'
+        helpLinkId: 'lwm2mResourceLibrary'
       }
     ],
     [
@@ -435,7 +626,44 @@ export const entityTypeResources = new Map<EntityType, EntityTypeResource<BaseDa
       {
         helpLinkId: 'queue'
       }
-    ]
+    ],
+    [
+      EntityType.OAUTH2_CLIENT,
+      {
+        helpLinkId: 'oauth2Settings',
+        helpLinkIdForEntity: (entity: OAuth2Client) => getProviderHelpLink(entity.additionalInfo.providerName)
+      }
+    ],
+    [
+      EntityType.DOMAIN,
+      {
+        helpLinkId: 'domains'
+      }
+    ],
+    [
+      EntityType.MOBILE_APP,
+      {
+        helpLinkId: 'mobileApplication'
+      }
+    ],
+    [
+      EntityType.MOBILE_APP_BUNDLE,
+      {
+        helpLinkId: 'mobileBundle'
+      }
+    ],
+    [
+      EntityType.AI_MODEL,
+      {
+        helpLinkId: 'aiModels'
+      }
+    ],
+    [
+      EntityType.API_KEY,
+      {
+        helpLinkId: 'apiKeys'
+      }
+    ],
   ]
 );
 
@@ -445,16 +673,21 @@ export const baseDetailsPageByEntityType = new Map<EntityType, string>([
   [EntityType.CUSTOMER, '/customers'],
   [EntityType.USER, '/users'],
   [EntityType.DASHBOARD, '/dashboards'],
-  [EntityType.ASSET, '/assets'],
-  [EntityType.DEVICE, '/devices'],
+  [EntityType.ASSET, '/entities/assets'],
+  [EntityType.DEVICE, '/entities/devices'],
   [EntityType.DEVICE_PROFILE, '/profiles/deviceProfiles'],
   [EntityType.ASSET_PROFILE, '/profiles/assetProfiles'],
   [EntityType.RULE_CHAIN, '/ruleChains'],
-  [EntityType.EDGE, '/edgeInstances'],
-  [EntityType.ENTITY_VIEW, '/entityViews'],
-  [EntityType.TB_RESOURCE, '/settings/resources-library'],
-  [EntityType.OTA_PACKAGE, '/otaUpdates'],
-  [EntityType.QUEUE, '/settings/queues']
+  [EntityType.EDGE, '/edgeManagement/instances'],
+  [EntityType.ENTITY_VIEW, '/entities/entityViews'],
+  [EntityType.TB_RESOURCE, '/resources/resources-library'],
+  [EntityType.OTA_PACKAGE, '/features/otaUpdates'],
+  [EntityType.QUEUE, '/settings/queues'],
+  [EntityType.WIDGETS_BUNDLE, '/resources/widgets-library/widgets-bundles/details'],
+  [EntityType.WIDGET_TYPE, '/resources/widgets-library/widget-types/details'],
+  [EntityType.OAUTH2_CLIENT, '/security-settings/oauth2/clients/details'],
+  [EntityType.DOMAIN, '/security-settings/oauth2/clients/details'],
+  [EntityType.MOBILE_APP, '/mobile-center/applications']
 ]);
 
 export interface EntitySubtype {

@@ -1,5 +1,5 @@
 /**
- * Copyright © 2016-2023 The Thingsboard Authors
+ * Copyright © 2016-2025 The Thingsboard Authors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,22 +15,18 @@
  */
 package org.thingsboard.rule.engine.geo;
 
-import lombok.extern.slf4j.Slf4j;
 import org.thingsboard.rule.engine.api.RuleNode;
 import org.thingsboard.rule.engine.api.TbContext;
 import org.thingsboard.rule.engine.api.TbNodeException;
+import org.thingsboard.server.common.data.msg.TbNodeConnectionType;
 import org.thingsboard.server.common.data.plugin.ComponentType;
 import org.thingsboard.server.common.msg.TbMsg;
 
-/**
- * Created by ashvayka on 19.01.18.
- */
-@Slf4j
 @RuleNode(
         type = ComponentType.FILTER,
         name = "gps geofencing filter",
         configClazz = TbGpsGeofencingFilterNodeConfiguration.class,
-        relationTypes = {"True", "False"},
+        relationTypes = {TbNodeConnectionType.TRUE, TbNodeConnectionType.FALSE},
         nodeDescription = "Filter incoming messages by GPS based geofencing",
         nodeDetails = "Extracts latitude and longitude parameters from the incoming message and checks them according to configured perimeter. </br>" +
                 "Configuration:</br></br>" +
@@ -57,18 +53,21 @@ import org.thingsboard.server.common.msg.TbMsg;
                 "</br></br>" +
                 "{\"latitude\":  48.198618758582384, \"longitude\": 24.65322245153503, \"radius\":  100.0, \"radiusUnit\": \"METER\" }" +
                 "</br></br>" +
-                "Available radius units: METER, KILOMETER, FOOT, MILE, NAUTICAL_MILE;",
-        uiResources = {"static/rulenode/rulenode-core-config.js"},
-        configDirective = "tbFilterNodeGpsGeofencingConfig")
+                "Available radius units: METER, KILOMETER, FOOT, MILE, NAUTICAL_MILE;<br><br>" +
+                "Output connections: <code>True</code>, <code>False</code>, <code>Failure</code>",
+        configDirective = "tbFilterNodeGpsGeofencingConfig",
+        docUrl = "https://thingsboard.io/docs/user-guide/rule-engine-2-0/nodes/filter/gps-geofencing-filter/"
+)
 public class TbGpsGeofencingFilterNode extends AbstractGeofencingNode<TbGpsGeofencingFilterNodeConfiguration> {
 
     @Override
     public void onMsg(TbContext ctx, TbMsg msg) throws TbNodeException {
-        ctx.tellNext(msg, checkMatches(msg) ? "True" : "False");
+        ctx.tellNext(msg, checkMatches(msg) ? TbNodeConnectionType.TRUE : TbNodeConnectionType.FALSE);
     }
 
     @Override
     protected Class<TbGpsGeofencingFilterNodeConfiguration> getConfigClazz() {
         return TbGpsGeofencingFilterNodeConfiguration.class;
     }
+
 }

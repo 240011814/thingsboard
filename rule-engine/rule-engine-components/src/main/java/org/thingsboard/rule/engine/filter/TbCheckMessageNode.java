@@ -1,5 +1,5 @@
 /**
- * Copyright © 2016-2023 The Thingsboard Authors
+ * Copyright © 2016-2025 The Thingsboard Authors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,31 +16,31 @@
 package org.thingsboard.rule.engine.filter;
 
 import com.google.gson.Gson;
-import lombok.extern.slf4j.Slf4j;
 import org.thingsboard.rule.engine.api.RuleNode;
 import org.thingsboard.rule.engine.api.TbContext;
 import org.thingsboard.rule.engine.api.TbNode;
 import org.thingsboard.rule.engine.api.TbNodeConfiguration;
 import org.thingsboard.rule.engine.api.TbNodeException;
 import org.thingsboard.rule.engine.api.util.TbNodeUtils;
+import org.thingsboard.server.common.data.msg.TbNodeConnectionType;
 import org.thingsboard.server.common.data.plugin.ComponentType;
 import org.thingsboard.server.common.msg.TbMsg;
 
 import java.util.List;
 import java.util.Map;
 
-@Slf4j
 @RuleNode(
         type = ComponentType.FILTER,
         name = "check fields presence",
-        relationTypes = {"True", "False"},
+        relationTypes = {TbNodeConnectionType.TRUE, TbNodeConnectionType.FALSE},
         configClazz = TbCheckMessageNodeConfiguration.class,
         nodeDescription = "Checks the presence of the specified fields in the message and/or metadata.",
-        nodeDetails = "Checks the presence of the specified fields in the message and/or metadata. " +
-                "By default, the rule node checks that all specified fields need to be present. " +
-                "Uncheck the 'Check that all specified fields are present' if the presence of at least one field is sufficient.",
-        uiResources = {"static/rulenode/rulenode-core-config.js"},
-        configDirective = "tbFilterNodeCheckMessageConfig")
+        nodeDetails = "By default, the rule node checks that all specified fields are present. " +
+                "Uncheck the 'Check that all selected fields are present' if the presence of at least one field is sufficient.<br><br>" +
+                "Output connections: <code>True</code>, <code>False</code>, <code>Failure</code>",
+        configDirective = "tbFilterNodeCheckMessageConfig",
+        docUrl = "https://thingsboard.io/docs/user-guide/rule-engine-2-0/nodes/filter/check-fields-presence/"
+)
 public class TbCheckMessageNode implements TbNode {
 
     private static final Gson gson = new Gson();
@@ -59,11 +59,10 @@ public class TbCheckMessageNode implements TbNode {
     @Override
     public void onMsg(TbContext ctx, TbMsg msg) {
         try {
-            if (config.isCheckAllKeys()) {
-                ctx.tellNext(msg, allKeysData(msg) && allKeysMetadata(msg) ? "True" : "False");
-            } else {
-                ctx.tellNext(msg, atLeastOneData(msg) || atLeastOneMetadata(msg) ? "True" : "False");
-            }
+            String relationType = config.isCheckAllKeys() ?
+                    allKeysData(msg) && allKeysMetadata(msg) ? TbNodeConnectionType.TRUE : TbNodeConnectionType.FALSE :
+                    atLeastOneData(msg) || atLeastOneMetadata(msg) ? TbNodeConnectionType.TRUE : TbNodeConnectionType.FALSE;
+            ctx.tellNext(msg, relationType);
         } catch (Exception e) {
             ctx.tellFailure(msg, e);
         }

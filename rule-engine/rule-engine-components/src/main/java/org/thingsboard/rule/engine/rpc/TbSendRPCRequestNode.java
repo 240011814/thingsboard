@@ -1,5 +1,5 @@
 /**
- * Copyright © 2016-2023 The Thingsboard Authors
+ * Copyright © 2016-2025 The Thingsboard Authors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,19 +20,19 @@ import com.google.gson.Gson;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
-import lombok.extern.slf4j.Slf4j;
-import org.thingsboard.server.common.data.StringUtils;
 import org.thingsboard.rule.engine.api.RuleEngineDeviceRpcRequest;
 import org.thingsboard.rule.engine.api.RuleNode;
 import org.thingsboard.rule.engine.api.TbContext;
 import org.thingsboard.rule.engine.api.TbNode;
 import org.thingsboard.rule.engine.api.TbNodeConfiguration;
 import org.thingsboard.rule.engine.api.TbNodeException;
-import org.thingsboard.rule.engine.api.TbRelationTypes;
 import org.thingsboard.rule.engine.api.util.TbNodeUtils;
 import org.thingsboard.server.common.data.DataConstants;
 import org.thingsboard.server.common.data.EntityType;
+import org.thingsboard.server.common.data.StringUtils;
 import org.thingsboard.server.common.data.id.DeviceId;
+import org.thingsboard.server.common.data.msg.TbMsgType;
+import org.thingsboard.server.common.data.msg.TbNodeConnectionType;
 import org.thingsboard.server.common.data.plugin.ComponentType;
 import org.thingsboard.server.common.msg.TbMsg;
 
@@ -40,7 +40,6 @@ import java.util.Random;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
-@Slf4j
 @RuleNode(
         type = ComponentType.ACTION,
         name = "rpc call request",
@@ -48,25 +47,24 @@ import java.util.concurrent.TimeUnit;
         nodeDescription = "Sends RPC call to device",
         nodeDetails = "Expects messages with \"method\" and \"params\". Will forward response from device to next nodes." +
                 "If the RPC call request is originated by REST API call from user, will forward the response to user immediately.",
-        uiResources = {"static/rulenode/rulenode-core-config.js"},
         configDirective = "tbActionNodeRpcRequestConfig",
-        icon = "call_made"
+        icon = "call_made",
+        docUrl = "https://thingsboard.io/docs/user-guide/rule-engine-2-0/nodes/action/rpc-call-request/"
 )
 public class TbSendRPCRequestNode implements TbNode {
 
-    private Random random = new Random();
-    private Gson gson = new Gson();
-    private JsonParser jsonParser = new JsonParser();
+    private final Random random = new Random();
+    private final Gson gson = new Gson();
     private TbSendRpcRequestNodeConfiguration config;
 
     @Override
     public void init(TbContext ctx, TbNodeConfiguration configuration) throws TbNodeException {
-        this.config = TbNodeUtils.convert(configuration, TbSendRpcRequestNodeConfiguration.class);
+        config = TbNodeUtils.convert(configuration, TbSendRpcRequestNodeConfiguration.class);
     }
 
     @Override
     public void onMsg(TbContext ctx, TbMsg msg) {
-        JsonObject json = jsonParser.parse(msg.getData()).getAsJsonObject();
+        JsonObject json = JsonParser.parseString(msg.getData()).getAsJsonObject();
         String tmp;
         if (msg.getOriginator().getEntityType() != EntityType.DEVICE) {
             ctx.tellFailure(msg, new RuntimeException("Message originator is not a device entity!"));
@@ -76,7 +74,7 @@ public class TbSendRPCRequestNode implements TbNode {
             ctx.tellFailure(msg, new RuntimeException("Params are not present in the message!"));
         } else {
             int requestId = json.has("requestId") ? json.get("requestId").getAsInt() : random.nextInt();
-            boolean restApiCall = msg.getType().equals(DataConstants.RPC_CALL_FROM_SERVER_TO_DEVICE);
+            boolean restApiCall = msg.isTypeOf(TbMsgType.RPC_CALL_FROM_SERVER_TO_DEVICE);
 
             tmp = msg.getMetaData().getValue("oneway");
             boolean oneway = !StringUtils.isEmpty(tmp) && Boolean.parseBoolean(tmp);
@@ -116,8 +114,8 @@ public class TbSendRPCRequestNode implements TbNode {
 
             ctx.getRpcService().sendRpcRequestToDevice(request, ruleEngineDeviceRpcResponse -> {
                 if (ruleEngineDeviceRpcResponse.getError().isEmpty()) {
-                    TbMsg next = ctx.newMsg(msg.getQueueName(), msg.getType(), msg.getOriginator(), msg.getCustomerId(), msg.getMetaData(), ruleEngineDeviceRpcResponse.getResponse().orElse("{}"));
-                    ctx.enqueueForTellNext(next, TbRelationTypes.SUCCESS);
+                    TbMsg next = ctx.newMsg(msg.getQueueName(), msg.getType(), msg.getOriginator(), msg.getCustomerId(), msg.getMetaData(), ruleEngineDeviceRpcResponse.getResponse().orElse(TbMsg.EMPTY_JSON_OBJECT));
+                    ctx.enqueueForTellNext(next, TbNodeConnectionType.SUCCESS);
                 } else {
                     TbMsg next = ctx.newMsg(msg.getQueueName(), msg.getType(), msg.getOriginator(), msg.getCustomerId(), msg.getMetaData(), wrap("error", ruleEngineDeviceRpcResponse.getError().get().name()));
                     ctx.enqueueForTellFailure(next, ruleEngineDeviceRpcResponse.getError().get().name());

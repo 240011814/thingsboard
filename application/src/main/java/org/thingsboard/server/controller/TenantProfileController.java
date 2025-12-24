@@ -1,5 +1,5 @@
 /**
- * Copyright © 2016-2023 The Thingsboard Authors
+ * Copyright © 2016-2025 The Thingsboard Authors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,43 +15,48 @@
  */
 package org.thingsboard.server.controller;
 
-import io.swagger.annotations.ApiOperation;
-import io.swagger.annotations.ApiParam;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.media.ArraySchema;
+import io.swagger.v3.oas.annotations.media.Schema;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestMethod;
 import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.ResponseBody;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 import org.thingsboard.server.common.data.EntityInfo;
 import org.thingsboard.server.common.data.TenantProfile;
 import org.thingsboard.server.common.data.exception.ThingsboardException;
+import org.thingsboard.server.common.data.id.TenantId;
 import org.thingsboard.server.common.data.id.TenantProfileId;
 import org.thingsboard.server.common.data.page.PageData;
 import org.thingsboard.server.common.data.page.PageLink;
+import org.thingsboard.server.config.annotations.ApiOperation;
 import org.thingsboard.server.queue.util.TbCoreComponent;
 import org.thingsboard.server.service.entitiy.tenant.profile.TbTenantProfileService;
 import org.thingsboard.server.service.security.permission.Operation;
 import org.thingsboard.server.service.security.permission.Resource;
+
+import java.util.List;
+import java.util.UUID;
 
 import static org.thingsboard.server.controller.ControllerConstants.MARKDOWN_CODE_BLOCK_END;
 import static org.thingsboard.server.controller.ControllerConstants.MARKDOWN_CODE_BLOCK_START;
 import static org.thingsboard.server.controller.ControllerConstants.PAGE_DATA_PARAMETERS;
 import static org.thingsboard.server.controller.ControllerConstants.PAGE_NUMBER_DESCRIPTION;
 import static org.thingsboard.server.controller.ControllerConstants.PAGE_SIZE_DESCRIPTION;
-import static org.thingsboard.server.controller.ControllerConstants.SORT_ORDER_ALLOWABLE_VALUES;
 import static org.thingsboard.server.controller.ControllerConstants.SORT_ORDER_DESCRIPTION;
 import static org.thingsboard.server.controller.ControllerConstants.SORT_PROPERTY_DESCRIPTION;
 import static org.thingsboard.server.controller.ControllerConstants.SYSTEM_AUTHORITY_PARAGRAPH;
 import static org.thingsboard.server.controller.ControllerConstants.TENANT_PROFILE_ID_PARAM_DESCRIPTION;
-import static org.thingsboard.server.controller.ControllerConstants.TENANT_PROFILE_INFO_SORT_PROPERTY_ALLOWABLE_VALUES;
-import static org.thingsboard.server.controller.ControllerConstants.TENANT_PROFILE_SORT_PROPERTY_ALLOWABLE_VALUES;
 import static org.thingsboard.server.controller.ControllerConstants.TENANT_PROFILE_TEXT_SEARCH_DESCRIPTION;
 import static org.thingsboard.server.controller.ControllerConstants.UUID_WIKI_LINK;
 
@@ -69,48 +74,33 @@ public class TenantProfileController extends BaseController {
     @ApiOperation(value = "Get Tenant Profile (getTenantProfileById)",
             notes = "Fetch the Tenant Profile object based on the provided Tenant Profile Id. " + SYSTEM_AUTHORITY_PARAGRAPH)
     @PreAuthorize("hasAnyAuthority('SYS_ADMIN')")
-    @RequestMapping(value = "/tenantProfile/{tenantProfileId}", method = RequestMethod.GET)
-    @ResponseBody
+    @GetMapping(value = "/tenantProfile/{tenantProfileId}")
     public TenantProfile getTenantProfileById(
-            @ApiParam(value = TENANT_PROFILE_ID_PARAM_DESCRIPTION)
+            @Parameter(description = TENANT_PROFILE_ID_PARAM_DESCRIPTION)
             @PathVariable("tenantProfileId") String strTenantProfileId) throws ThingsboardException {
         checkParameter("tenantProfileId", strTenantProfileId);
-        try {
-            TenantProfileId tenantProfileId = new TenantProfileId(toUUID(strTenantProfileId));
-            return checkTenantProfileId(tenantProfileId, Operation.READ);
-        } catch (Exception e) {
-            throw handleException(e);
-        }
+        TenantProfileId tenantProfileId = new TenantProfileId(toUUID(strTenantProfileId));
+        return checkTenantProfileId(tenantProfileId, Operation.READ);
     }
 
     @ApiOperation(value = "Get Tenant Profile Info (getTenantProfileInfoById)",
             notes = "Fetch the Tenant Profile Info object based on the provided Tenant Profile Id. " + TENANT_PROFILE_INFO_DESCRIPTION + SYSTEM_AUTHORITY_PARAGRAPH)
     @PreAuthorize("hasAnyAuthority('SYS_ADMIN')")
-    @RequestMapping(value = "/tenantProfileInfo/{tenantProfileId}", method = RequestMethod.GET)
-    @ResponseBody
+    @GetMapping(value = "/tenantProfileInfo/{tenantProfileId}")
     public EntityInfo getTenantProfileInfoById(
-            @ApiParam(value = TENANT_PROFILE_ID_PARAM_DESCRIPTION)
+            @Parameter(description = TENANT_PROFILE_ID_PARAM_DESCRIPTION)
             @PathVariable("tenantProfileId") String strTenantProfileId) throws ThingsboardException {
         checkParameter("tenantProfileId", strTenantProfileId);
-        try {
-            TenantProfileId tenantProfileId = new TenantProfileId(toUUID(strTenantProfileId));
-            return checkNotNull(tenantProfileService.findTenantProfileInfoById(getTenantId(), tenantProfileId));
-        } catch (Exception e) {
-            throw handleException(e);
-        }
+        TenantProfileId tenantProfileId = new TenantProfileId(toUUID(strTenantProfileId));
+        return checkNotNull(tenantProfileService.findTenantProfileInfoById(getTenantId(), tenantProfileId));
     }
 
     @ApiOperation(value = "Get default Tenant Profile Info (getDefaultTenantProfileInfo)",
             notes = "Fetch the default Tenant Profile Info object based. " + TENANT_PROFILE_INFO_DESCRIPTION + SYSTEM_AUTHORITY_PARAGRAPH)
     @PreAuthorize("hasAnyAuthority('SYS_ADMIN')")
-    @RequestMapping(value = "/tenantProfileInfo/default", method = RequestMethod.GET)
-    @ResponseBody
+    @GetMapping(value = "/tenantProfileInfo/default")
     public EntityInfo getDefaultTenantProfileInfo() throws ThingsboardException {
-        try {
-            return checkNotNull(tenantProfileService.findDefaultTenantProfileInfo(getTenantId()));
-        } catch (Exception e) {
-            throw handleException(e);
-        }
+        return checkNotNull(tenantProfileService.findDefaultTenantProfileInfo(getTenantId()));
     }
 
     @ApiOperation(value = "Create Or update Tenant Profile (saveTenantProfile)",
@@ -126,8 +116,8 @@ public class TenantProfileController extends BaseController {
                     "Let's review the example of tenant profile data below: " +
                     "\n\n" + MARKDOWN_CODE_BLOCK_START +
                     "{\n" +
-                    "  \"name\": \"Default\",\n" +
-                    "  \"description\": \"Default tenant profile\",\n" +
+                    "  \"name\": \"Your name\",\n" +
+                    "  \"description\": \"Your description\",\n" +
                     "  \"isolatedTbRuleEngine\": false,\n" +
                     "  \"profileData\": {\n" +
                     "    \"configuration\": {\n" +
@@ -140,132 +130,139 @@ public class TenantProfileController extends BaseController {
                     "      \"maxRuleChains\": 0,\n" +
                     "      \"maxResourcesInBytes\": 0,\n" +
                     "      \"maxOtaPackagesInBytes\": 0,\n" +
+                    "      \"maxResourceSize\": 0,\n" +
                     "      \"transportTenantMsgRateLimit\": \"1000:1,20000:60\",\n" +
                     "      \"transportTenantTelemetryMsgRateLimit\": \"1000:1,20000:60\",\n" +
                     "      \"transportTenantTelemetryDataPointsRateLimit\": \"1000:1,20000:60\",\n" +
                     "      \"transportDeviceMsgRateLimit\": \"20:1,600:60\",\n" +
                     "      \"transportDeviceTelemetryMsgRateLimit\": \"20:1,600:60\",\n" +
                     "      \"transportDeviceTelemetryDataPointsRateLimit\": \"20:1,600:60\",\n" +
+                    "      \"transportGatewayMsgRateLimit\": \"20:1,600:60\",\n" +
+                    "      \"transportGatewayTelemetryMsgRateLimit\": \"20:1,600:60\",\n" +
+                    "      \"transportGatewayTelemetryDataPointsRateLimit\": \"20:1,600:60\",\n" +
+                    "      \"transportGatewayDeviceMsgRateLimit\": \"20:1,600:60\",\n" +
+                    "      \"transportGatewayDeviceTelemetryMsgRateLimit\": \"20:1,600:60\",\n" +
+                    "      \"transportGatewayDeviceTelemetryDataPointsRateLimit\": \"20:1,600:60\",\n" +
                     "      \"maxTransportMessages\": 10000000,\n" +
                     "      \"maxTransportDataPoints\": 10000000,\n" +
                     "      \"maxREExecutions\": 4000000,\n" +
                     "      \"maxJSExecutions\": 5000000,\n" +
                     "      \"maxDPStorageDays\": 0,\n" +
                     "      \"maxRuleNodeExecutionsPerMessage\": 50,\n" +
+                    "      \"maxDebugModeDurationMinutes\": 15,\n" +
                     "      \"maxEmails\": 0,\n" +
                     "      \"maxSms\": 0,\n" +
                     "      \"maxCreatedAlarms\": 1000,\n" +
                     "      \"defaultStorageTtlDays\": 0,\n" +
                     "      \"alarmsTtlDays\": 0,\n" +
                     "      \"rpcTtlDays\": 0,\n" +
-                    "      \"warnThreshold\": 0\n" +
+                    "      \"queueStatsTtlDays\": 0,\n" +
+                    "      \"ruleEngineExceptionsTtlDays\": 0,\n" +
+                    "      \"warnThreshold\": 0,\n" +
+                    "      \"maxCalculatedFieldsPerEntity\": 5,\n" +
+                    "      \"maxArgumentsPerCF\": 10,\n" +
+                    "      \"minAllowedScheduledUpdateIntervalInSecForCF\": 60,\n" +
+                    "      \"maxRelationLevelPerCfArgument\": 10,\n" +
+                    "      \"maxRelatedEntitiesToReturnPerCfArgument\": 100,\n" +
+                    "      \"maxDataPointsPerRollingArg\": 1000,\n" +
+                    "      \"maxStateSizeInKBytes\": 32,\n" +
+                    "      \"maxSingleValueArgumentSizeInKBytes\": 2," +
+                    "      \"minAllowedDeduplicationIntervalInSecForCF\": 10," +
+                    "      \"minAllowedAggregationIntervalInSecForCF\": 60," +
+                    "      \"intermediateAggregationIntervalInSecForCF\": 300," +
+                    "      \"cfReevaluationCheckInterval\": 60," +
+                    "      \"alarmsReevaluationInterval\": 60" +
                     "    }\n" +
                     "  },\n" +
-                    "  \"default\": true\n" +
+                    "  \"default\": false\n" +
                     "}" +
                     MARKDOWN_CODE_BLOCK_END +
                     "Remove 'id', from the request body example (below) to create new Tenant Profile entity." +
                     SYSTEM_AUTHORITY_PARAGRAPH)
     @PreAuthorize("hasAuthority('SYS_ADMIN')")
-    @RequestMapping(value = "/tenantProfile", method = RequestMethod.POST)
-    @ResponseBody
-    public TenantProfile saveTenantProfile(@ApiParam(value = "A JSON value representing the tenant profile.")
-                                           @RequestBody TenantProfile tenantProfile) throws ThingsboardException {
-        try {
-            TenantProfile oldProfile;
-            if (tenantProfile.getId() == null) {
-                accessControlService.checkPermission(getCurrentUser(), Resource.TENANT_PROFILE, Operation.CREATE);
-                oldProfile = null;
-            } else {
-                oldProfile = checkTenantProfileId(tenantProfile.getId(), Operation.WRITE);
-            }
-
-            return tbTenantProfileService.save(getTenantId(), tenantProfile, oldProfile);
-        } catch (Exception e) {
-            throw handleException(e);
+    @PostMapping(value = "/tenantProfile")
+    public TenantProfile saveTenantProfile(@Parameter(description = "A JSON value representing the tenant profile.")
+                                           @Valid @RequestBody TenantProfile tenantProfile) throws ThingsboardException {
+        TenantProfile oldProfile;
+        if (tenantProfile.getId() == null) {
+            accessControlService.checkPermission(getCurrentUser(), Resource.TENANT_PROFILE, Operation.CREATE);
+            oldProfile = null;
+        } else {
+            oldProfile = checkTenantProfileId(tenantProfile.getId(), Operation.WRITE);
         }
+
+        return tbTenantProfileService.save(getTenantId(), tenantProfile, oldProfile);
     }
 
     @ApiOperation(value = "Delete Tenant Profile (deleteTenantProfile)",
             notes = "Deletes the tenant profile. Referencing non-existing tenant profile Id will cause an error. Referencing profile that is used by the tenants will cause an error. " + SYSTEM_AUTHORITY_PARAGRAPH)
     @PreAuthorize("hasAuthority('SYS_ADMIN')")
-    @RequestMapping(value = "/tenantProfile/{tenantProfileId}", method = RequestMethod.DELETE)
+    @DeleteMapping(value = "/tenantProfile/{tenantProfileId}")
     @ResponseStatus(value = HttpStatus.OK)
-    public void deleteTenantProfile(@ApiParam(value = TENANT_PROFILE_ID_PARAM_DESCRIPTION)
+    public void deleteTenantProfile(@Parameter(description = TENANT_PROFILE_ID_PARAM_DESCRIPTION)
                                     @PathVariable("tenantProfileId") String strTenantProfileId) throws ThingsboardException {
-        try {
-            checkParameter("tenantProfileId", strTenantProfileId);
-            TenantProfileId tenantProfileId = new TenantProfileId(toUUID(strTenantProfileId));
-            TenantProfile profile = checkTenantProfileId(tenantProfileId, Operation.DELETE);
-            tbTenantProfileService.delete(getTenantId(), profile);
-        } catch (Exception e) {
-            throw handleException(e);
-        }
+        checkParameter("tenantProfileId", strTenantProfileId);
+        TenantProfileId tenantProfileId = new TenantProfileId(toUUID(strTenantProfileId));
+        TenantProfile profile = checkTenantProfileId(tenantProfileId, Operation.DELETE);
+        tbTenantProfileService.delete(getTenantId(), profile);
     }
 
     @ApiOperation(value = "Make tenant profile default (setDefaultTenantProfile)",
             notes = "Makes specified tenant profile to be default. Referencing non-existing tenant profile Id will cause an error. " + SYSTEM_AUTHORITY_PARAGRAPH)
     @PreAuthorize("hasAnyAuthority('SYS_ADMIN')")
-    @RequestMapping(value = "/tenantProfile/{tenantProfileId}/default", method = RequestMethod.POST)
-    @ResponseBody
+    @PostMapping(value = "/tenantProfile/{tenantProfileId}/default")
     public TenantProfile setDefaultTenantProfile(
-            @ApiParam(value = TENANT_PROFILE_ID_PARAM_DESCRIPTION)
+            @Parameter(description = TENANT_PROFILE_ID_PARAM_DESCRIPTION)
             @PathVariable("tenantProfileId") String strTenantProfileId) throws ThingsboardException {
         checkParameter("tenantProfileId", strTenantProfileId);
-        try {
-            TenantProfileId tenantProfileId = new TenantProfileId(toUUID(strTenantProfileId));
-            TenantProfile tenantProfile = checkTenantProfileId(tenantProfileId, Operation.WRITE);
-            tenantProfileService.setDefaultTenantProfile(getTenantId(), tenantProfileId);
-            return tenantProfile;
-        } catch (Exception e) {
-            throw handleException(e);
-        }
+        TenantProfileId tenantProfileId = new TenantProfileId(toUUID(strTenantProfileId));
+        TenantProfile tenantProfile = checkTenantProfileId(tenantProfileId, Operation.WRITE);
+        tenantProfileService.setDefaultTenantProfile(getTenantId(), tenantProfileId);
+        return tenantProfile;
     }
 
     @ApiOperation(value = "Get Tenant Profiles (getTenantProfiles)", notes = "Returns a page of tenant profiles registered in the platform. " + PAGE_DATA_PARAMETERS + SYSTEM_AUTHORITY_PARAGRAPH)
     @PreAuthorize("hasAuthority('SYS_ADMIN')")
-    @RequestMapping(value = "/tenantProfiles", params = {"pageSize", "page"}, method = RequestMethod.GET)
-    @ResponseBody
+    @GetMapping(value = "/tenantProfiles", params = {"pageSize", "page"})
     public PageData<TenantProfile> getTenantProfiles(
-            @ApiParam(value = PAGE_SIZE_DESCRIPTION, required = true)
+            @Parameter(description = PAGE_SIZE_DESCRIPTION, required = true)
             @RequestParam int pageSize,
-            @ApiParam(value = PAGE_NUMBER_DESCRIPTION, required = true)
+            @Parameter(description = PAGE_NUMBER_DESCRIPTION, required = true)
             @RequestParam int page,
-            @ApiParam(value = TENANT_PROFILE_TEXT_SEARCH_DESCRIPTION)
+            @Parameter(description = TENANT_PROFILE_TEXT_SEARCH_DESCRIPTION)
             @RequestParam(required = false) String textSearch,
-            @ApiParam(value = SORT_PROPERTY_DESCRIPTION, allowableValues = TENANT_PROFILE_SORT_PROPERTY_ALLOWABLE_VALUES)
+            @Parameter(description = SORT_PROPERTY_DESCRIPTION, schema = @Schema(allowableValues = {"createdTime", "name", "description", "isDefault"}))
             @RequestParam(required = false) String sortProperty,
-            @ApiParam(value = SORT_ORDER_DESCRIPTION, allowableValues = SORT_ORDER_ALLOWABLE_VALUES)
+            @Parameter(description = SORT_ORDER_DESCRIPTION, schema = @Schema(allowableValues = {"ASC", "DESC"}))
             @RequestParam(required = false) String sortOrder) throws ThingsboardException {
-        try {
-            PageLink pageLink = createPageLink(pageSize, page, textSearch, sortProperty, sortOrder);
-            return checkNotNull(tenantProfileService.findTenantProfiles(getTenantId(), pageLink));
-        } catch (Exception e) {
-            throw handleException(e);
-        }
+        PageLink pageLink = createPageLink(pageSize, page, textSearch, sortProperty, sortOrder);
+        return checkNotNull(tenantProfileService.findTenantProfiles(getTenantId(), pageLink));
     }
 
     @ApiOperation(value = "Get Tenant Profiles Info (getTenantProfileInfos)", notes = "Returns a page of tenant profile info objects registered in the platform. "
             + TENANT_PROFILE_INFO_DESCRIPTION + PAGE_DATA_PARAMETERS + SYSTEM_AUTHORITY_PARAGRAPH)
     @PreAuthorize("hasAuthority('SYS_ADMIN')")
-    @RequestMapping(value = "/tenantProfileInfos", params = {"pageSize", "page"}, method = RequestMethod.GET)
-    @ResponseBody
+    @GetMapping(value = "/tenantProfileInfos", params = {"pageSize", "page"})
     public PageData<EntityInfo> getTenantProfileInfos(
-            @ApiParam(value = PAGE_SIZE_DESCRIPTION, required = true)
+            @Parameter(description = PAGE_SIZE_DESCRIPTION, required = true)
             @RequestParam int pageSize,
-            @ApiParam(value = PAGE_NUMBER_DESCRIPTION, required = true)
+            @Parameter(description = PAGE_NUMBER_DESCRIPTION, required = true)
             @RequestParam int page,
-            @ApiParam(value = TENANT_PROFILE_TEXT_SEARCH_DESCRIPTION)
+            @Parameter(description = TENANT_PROFILE_TEXT_SEARCH_DESCRIPTION)
             @RequestParam(required = false) String textSearch,
-            @ApiParam(value = SORT_PROPERTY_DESCRIPTION, allowableValues = TENANT_PROFILE_INFO_SORT_PROPERTY_ALLOWABLE_VALUES)
+            @Parameter(description = SORT_PROPERTY_DESCRIPTION, schema = @Schema(allowableValues = {"id", "name"}))
             @RequestParam(required = false) String sortProperty,
-            @ApiParam(value = SORT_ORDER_DESCRIPTION, allowableValues = SORT_ORDER_ALLOWABLE_VALUES)
+            @Parameter(description = SORT_ORDER_DESCRIPTION, schema = @Schema(allowableValues = {"ASC", "DESC"}))
             @RequestParam(required = false) String sortOrder) throws ThingsboardException {
-        try {
-            PageLink pageLink = createPageLink(pageSize, page, textSearch, sortProperty, sortOrder);
-            return checkNotNull(tenantProfileService.findTenantProfileInfos(getTenantId(), pageLink));
-        } catch (Exception e) {
-            throw handleException(e);
-        }
+        PageLink pageLink = createPageLink(pageSize, page, textSearch, sortProperty, sortOrder);
+        return checkNotNull(tenantProfileService.findTenantProfileInfos(getTenantId(), pageLink));
     }
+
+    @GetMapping(value = "/tenantProfiles", params = {"ids"})
+    @PreAuthorize("hasAuthority('SYS_ADMIN')")
+    public List<TenantProfile> getTenantProfilesByIds(@Parameter(description = "Comma-separated list of tenant profile ids", array = @ArraySchema(schema = @Schema(type = "string")))
+                                                      @RequestParam("ids") UUID[] ids) {
+        return tenantProfileService.findTenantProfilesByIds(TenantId.SYS_TENANT_ID, ids);
+    }
+
 }

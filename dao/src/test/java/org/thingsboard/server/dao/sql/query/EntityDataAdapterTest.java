@@ -1,5 +1,5 @@
 /**
- * Copyright © 2016-2023 The Thingsboard Authors
+ * Copyright © 2016-2025 The Thingsboard Authors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -27,5 +27,8 @@ public class EntityDataAdapterTest {
         assertThat(EntityDataAdapter.convertValue("500D")).isEqualTo("500D"); //do not convert to Double !!!
         assertThat(EntityDataAdapter.convertValue("0101010521130565")).isEqualTo("0101010521130565"); //do not convert to Double !!!
         assertThat(EntityDataAdapter.convertValue("89010303310033979663")).isEqualTo("89010303310033979663"); //do not convert to Double !!!
+        assertThat(EntityDataAdapter.convertValue("89914009129080723322")).isEqualTo("89914009129080723322");
+        assertThat(EntityDataAdapter.convertValue("899140091AAAA29080723322")).isEqualTo("899140091AAAA29080723322");
+        assertThat(EntityDataAdapter.convertValue("899140091.29080723322")).isEqualTo("899140091.29080723322");
     }
 }

@@ -1,5 +1,5 @@
 ///
-/// Copyright © 2016-2023 The Thingsboard Authors
+/// Copyright © 2016-2025 The Thingsboard Authors
 ///
 /// Licensed under the Apache License, Version 2.0 (the "License");
 /// you may not use this file except in compliance with the License.
@@ -14,18 +14,18 @@
 /// limitations under the License.
 ///
 
-import { Component, forwardRef, Input, OnInit } from '@angular/core';
+import { Component, DestroyRef, forwardRef, Input, OnInit } from '@angular/core';
 import {
   ControlValueAccessor,
-  FormBuilder,
-  FormControl,
-  FormGroup,
+  UntypedFormBuilder,
+  UntypedFormControl,
+  UntypedFormGroup,
   NG_VALIDATORS,
   NG_VALUE_ACCESSOR,
   Validator,
   Validators
 } from '@angular/forms';
-import { AlarmRule } from '@shared/models/device.models';
+import { DeviceProfileAlarmRule } from '@shared/models/device.models';
 import { MatDialog } from '@angular/material/dialog';
 import { coerceBooleanProperty } from '@angular/cdk/coercion';
 import { isDefinedAndNotNull } from '@core/utils';
@@ -36,6 +36,7 @@ import {
 import { EntityId } from '@shared/models/id/entity-id';
 import { DashboardId } from '@shared/models/id/dashboard-id';
 import { UtilsService } from '@core/services/utils.service';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 
 @Component({
   selector: 'tb-alarm-rule',
@@ -71,9 +72,9 @@ export class AlarmRuleComponent implements ControlValueAccessor, OnInit, Validat
   @Input()
   deviceProfileId: EntityId;
 
-  private modelValue: AlarmRule;
+  private modelValue: DeviceProfileAlarmRule;
 
-  alarmRuleFormGroup: FormGroup;
+  alarmRuleFormGroup: UntypedFormGroup;
 
   expandAlarmDetails = false;
 
@@ -81,7 +82,8 @@ export class AlarmRuleComponent implements ControlValueAccessor, OnInit, Validat
 
   constructor(private dialog: MatDialog,
               private utils: UtilsService,
-              private fb: FormBuilder) {
+              private fb: UntypedFormBuilder,
+              private destroyRef: DestroyRef) {
   }
 
   registerOnChange(fn: any): void {
@@ -98,7 +100,9 @@ export class AlarmRuleComponent implements ControlValueAccessor, OnInit, Validat
       alarmDetails: [null],
       dashboardId: [null]
     });
-    this.alarmRuleFormGroup.valueChanges.subscribe(() => {
+    this.alarmRuleFormGroup.valueChanges.pipe(
+      takeUntilDestroyed(this.destroyRef)
+    ).subscribe(() => {
       this.updateModel();
     });
   }
@@ -112,7 +116,7 @@ export class AlarmRuleComponent implements ControlValueAccessor, OnInit, Validat
     }
   }
 
-  writeValue(value: AlarmRule): void {
+  writeValue(value: DeviceProfileAlarmRule): void {
     this.modelValue = value;
     const model = this.modelValue ? {
       ...this.modelValue,
@@ -140,7 +144,7 @@ export class AlarmRuleComponent implements ControlValueAccessor, OnInit, Validat
     });
   }
 
-  public validate(c: FormControl) {
+  public validate(c: UntypedFormControl) {
     return (!this.required && !this.modelValue || this.alarmRuleFormGroup.valid) ? null : {
       alarmRule: {
         valid: false,

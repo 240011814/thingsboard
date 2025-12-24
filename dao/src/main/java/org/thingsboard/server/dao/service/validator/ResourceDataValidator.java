@@ -1,5 +1,5 @@
 /**
- * Copyright © 2016-2023 The Thingsboard Authors
+ * Copyright © 2016-2025 The Thingsboard Authors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,15 +15,18 @@
  */
 package org.thingsboard.server.dao.service.validator;
 
+import org.apache.commons.io.FileUtils;
+import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.Strings;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Component;
-import org.thingsboard.server.common.data.StringUtils;
+import org.thingsboard.server.common.data.ResourceType;
 import org.thingsboard.server.common.data.TbResource;
+import org.thingsboard.server.common.data.id.TbResourceId;
 import org.thingsboard.server.common.data.id.TenantId;
 import org.thingsboard.server.common.data.tenant.profile.DefaultTenantProfileConfiguration;
-import org.thingsboard.server.dao.exception.DataValidationException;
-import org.thingsboard.server.dao.model.ModelConstants;
+import org.thingsboard.server.exception.DataValidationException;
 import org.thingsboard.server.dao.resource.TbResourceDao;
 import org.thingsboard.server.dao.service.DataValidator;
 import org.thingsboard.server.dao.tenant.TbTenantProfileCache;
@@ -46,35 +49,62 @@ public class ResourceDataValidator extends DataValidator<TbResource> {
 
     @Override
     protected void validateCreate(TenantId tenantId, TbResource resource) {
-        if (tenantId != null && !TenantId.SYS_TENANT_ID.equals(tenantId)) {
-            DefaultTenantProfileConfiguration profileConfiguration =
-                    (DefaultTenantProfileConfiguration) tenantProfileCache.get(tenantId).getProfileData().getConfiguration();
-            long maxSumResourcesDataInBytes = profileConfiguration.getMaxResourcesInBytes();
-            validateMaxSumDataSizePerTenant(tenantId, resourceDao, maxSumResourcesDataInBytes, resource.getData().length(), TB_RESOURCE);
+        if (resource.getData() == null || resource.getData().length == 0) {
+            throw new DataValidationException("Resource data should be specified");
         }
     }
 
     @Override
+    protected TbResource validateUpdate(TenantId tenantId, TbResource resource) {
+        if ((resource.getData() != null && !resource.getResourceType().isUpdatable() && tenantId != null && !tenantId.isSysTenantId())
+                || resource.getResourceType().equals(ResourceType.LWM2M_MODEL)) {
+            throw new DataValidationException("This type of resource can't be updated");
+        }
+        return resource;
+    }
+
+    @Override
     protected void validateDataImpl(TenantId tenantId, TbResource resource) {
-        if (StringUtils.isEmpty(resource.getTitle())) {
-            throw new DataValidationException("Resource title should be specified!");
-        }
-        if (resource.getResourceType() == null) {
-            throw new DataValidationException("Resource type should be specified!");
-        }
-        if (StringUtils.isEmpty(resource.getFileName())) {
-            throw new DataValidationException("Resource file name should be specified!");
-        }
-        if (StringUtils.isEmpty(resource.getResourceKey())) {
-            throw new DataValidationException("Resource key should be specified!");
-        }
+        validateString("Resource title", resource.getTitle());
         if (resource.getTenantId() == null) {
-            resource.setTenantId(TenantId.fromUUID(ModelConstants.NULL_UUID));
+            resource.setTenantId(TenantId.SYS_TENANT_ID);
         }
-        if (!resource.getTenantId().getId().equals(ModelConstants.NULL_UUID)) {
+        if (!resource.getTenantId().isSysTenantId()) {
             if (!tenantService.tenantExists(resource.getTenantId())) {
                 throw new DataValidationException("Resource is referencing to non-existent tenant!");
             }
         }
+        if (resource.getResourceType() == null) {
+            throw new DataValidationException("Resource type should be specified!");
+        }
+        if (resource.getData() != null) {
+            validateResourceSize(resource.getTenantId(), resource.getId(), resource.getData().length);
+        }
+        if (StringUtils.isEmpty(resource.getFileName())) {
+            throw new DataValidationException("Resource file name should be specified!");
+        }
+        if (Strings.CS.containsAny(resource.getFileName(), "/", "\\")) {
+            throw new DataValidationException("File name contains forbidden symbols");
+        }
+        if (StringUtils.isEmpty(resource.getResourceKey())) {
+            throw new DataValidationException("Resource key should be specified!");
+        }
     }
+
+    public void validateResourceSize(TenantId tenantId, TbResourceId resourceId, long dataSize) {
+        if (!tenantId.isSysTenantId()) {
+            DefaultTenantProfileConfiguration profileConfiguration = tenantProfileCache.get(tenantId).getDefaultProfileConfiguration();
+            long maxResourceSize = profileConfiguration.getMaxResourceSize();
+            if (maxResourceSize > 0 && dataSize > maxResourceSize) {
+                throw new IllegalArgumentException("Resource exceeds the maximum size of " + FileUtils.byteCountToDisplaySize(maxResourceSize));
+            }
+            long maxSumResourcesDataInBytes = profileConfiguration.getMaxResourcesInBytes();
+            if (resourceId != null) {
+                long prevSize = resourceDao.getResourceSize(tenantId, resourceId);
+                dataSize -= prevSize;
+            }
+            validateMaxSumDataSizePerTenant(tenantId, resourceDao, maxSumResourcesDataInBytes, dataSize, TB_RESOURCE);
+        }
+    }
+
 }

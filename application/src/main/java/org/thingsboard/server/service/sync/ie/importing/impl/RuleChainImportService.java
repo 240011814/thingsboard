@@ -1,5 +1,5 @@
 /**
- * Copyright © 2016-2023 The Thingsboard Authors
+ * Copyright © 2016-2025 The Thingsboard Authors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,23 +18,22 @@ package org.thingsboard.server.service.sync.ie.importing.impl;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.thingsboard.server.common.data.Dashboard;
 import org.thingsboard.server.common.data.EntityType;
 import org.thingsboard.server.common.data.User;
 import org.thingsboard.server.common.data.audit.ActionType;
-import org.thingsboard.server.common.data.edge.EdgeEventActionType;
-import org.thingsboard.server.common.data.exception.ThingsboardException;
 import org.thingsboard.server.common.data.id.RuleChainId;
 import org.thingsboard.server.common.data.id.RuleNodeId;
 import org.thingsboard.server.common.data.id.TenantId;
-import org.thingsboard.server.common.data.plugin.ComponentLifecycleEvent;
 import org.thingsboard.server.common.data.rule.RuleChain;
 import org.thingsboard.server.common.data.rule.RuleChainMetaData;
-import org.thingsboard.server.common.data.rule.RuleChainType;
 import org.thingsboard.server.common.data.rule.RuleNode;
+import org.thingsboard.server.common.data.sync.ie.EntityExportData;
 import org.thingsboard.server.common.data.sync.ie.RuleChainExportData;
 import org.thingsboard.server.dao.rule.RuleChainService;
 import org.thingsboard.server.dao.rule.RuleNodeDao;
 import org.thingsboard.server.queue.util.TbCoreComponent;
+import org.thingsboard.server.service.rule.TbRuleChainService;
 import org.thingsboard.server.service.sync.vc.data.EntitiesImportCtx;
 
 import java.util.Arrays;
@@ -42,6 +41,7 @@ import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -51,7 +51,9 @@ import java.util.stream.Collectors;
 public class RuleChainImportService extends BaseEntityImportService<RuleChainId, RuleChain, RuleChainExportData> {
 
     private static final LinkedHashSet<EntityType> HINTS = new LinkedHashSet<>(Arrays.asList(EntityType.RULE_CHAIN, EntityType.DEVICE, EntityType.ASSET));
+    public static final Pattern PROCESSED_CONFIG_FIELDS_PATTERN = Pattern.compile(".*[iI]d.*");
 
+    private final TbRuleChainService tbRuleChainService;
     private final RuleChainService ruleChainService;
     private final RuleNodeDao ruleNodeDao;
 
@@ -90,7 +92,8 @@ public class RuleChainImportService extends BaseEntityImportService<RuleChainId,
             });
         }
 
-        ruleNodes.forEach(ruleNode -> replaceIdsRecursively(ctx, idProvider, ruleNode.getConfiguration(), Collections.emptySet(), HINTS));
+        ruleNodes.forEach(ruleNode -> replaceIdsRecursively(ctx, idProvider, ruleNode.getConfiguration(),
+                Collections.emptySet(), PROCESSED_CONFIG_FIELDS_PATTERN, HINTS));
         Optional.ofNullable(metaData.getRuleChainConnections()).orElse(Collections.emptyList())
                 .forEach(ruleChainConnectionInfo -> {
                     ruleChainConnectionInfo.setTargetRuleChainId(idProvider.getInternalId(ruleChainConnectionInfo.getTargetRuleChainId(), false));
@@ -102,11 +105,11 @@ public class RuleChainImportService extends BaseEntityImportService<RuleChainId,
     }
 
     @Override
-    protected RuleChain saveOrUpdate(EntitiesImportCtx ctx, RuleChain ruleChain, RuleChainExportData exportData, IdProvider idProvider) {
+    protected RuleChain saveOrUpdate(EntitiesImportCtx ctx, RuleChain ruleChain, RuleChainExportData exportData, IdProvider idProvider, CompareResult compareResult) {
         ruleChain = ruleChainService.saveRuleChain(ruleChain);
         if (ctx.isFinalImportAttempt() || ctx.getCurrentImportResult().isUpdatedAllExternalIds()) {
             exportData.getMetaData().setRuleChainId(ruleChain.getId());
-            ruleChainService.saveRuleChainMetaData(ctx.getTenantId(), exportData.getMetaData());
+            ruleChainService.saveRuleChainMetaData(ctx.getTenantId(), exportData.getMetaData(), tbRuleChainService::updateRuleNodeConfiguration);
             return ruleChainService.findRuleChainById(ctx.getTenantId(), ruleChain.getId());
         } else {
             return ruleChain;
@@ -114,27 +117,21 @@ public class RuleChainImportService extends BaseEntityImportService<RuleChainId,
     }
 
     @Override
-    protected boolean compare(EntitiesImportCtx ctx, RuleChainExportData exportData, RuleChain prepared, RuleChain existing) {
-        boolean different = super.compare(ctx, exportData, prepared, existing);
-        if (!different) {
+    protected boolean isUpdateNeeded(EntitiesImportCtx ctx, RuleChainExportData exportData, RuleChain prepared, RuleChain existing) {
+        boolean updateNeeded = super.isUpdateNeeded(ctx, exportData, prepared, existing);
+        if (!updateNeeded) {
             RuleChainMetaData newMD = exportData.getMetaData();
             RuleChainMetaData existingMD = ruleChainService.loadRuleChainMetaData(ctx.getTenantId(), prepared.getId());
             existingMD.setRuleChainId(null);
-            different = !newMD.equals(existingMD);
+            updateNeeded = !newMD.equals(existingMD);
         }
-        return different;
+        return updateNeeded;
     }
 
     @Override
-    protected void onEntitySaved(User user, RuleChain savedRuleChain, RuleChain oldRuleChain) throws ThingsboardException {
+    protected void onEntitySaved(User user, RuleChain savedRuleChain, RuleChain oldRuleChain) {
         entityActionService.logEntityAction(user, savedRuleChain.getId(), savedRuleChain, null,
                 oldRuleChain == null ? ActionType.ADDED : ActionType.UPDATED, null);
-        if (savedRuleChain.getType() == RuleChainType.CORE) {
-            clusterService.broadcastEntityStateChangeEvent(user.getTenantId(), savedRuleChain.getId(),
-                    oldRuleChain == null ? ComponentLifecycleEvent.CREATED : ComponentLifecycleEvent.UPDATED);
-        } else if (savedRuleChain.getType() == RuleChainType.EDGE && oldRuleChain != null) {
-            entityActionService.sendEntityNotificationMsgToEdge(user.getTenantId(), savedRuleChain.getId(), EdgeEventActionType.UPDATED);
-        }
     }
 
     @Override

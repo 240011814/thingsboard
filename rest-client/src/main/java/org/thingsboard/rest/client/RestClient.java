@@ -1,5 +1,5 @@
 /**
- * Copyright © 2016-2023 The Thingsboard Authors
+ * Copyright © 2016-2025 The Thingsboard Authors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,9 +15,14 @@
  */
 package org.thingsboard.rest.client;
 
+import com.auth0.jwt.JWT;
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.google.common.base.Strings;
+import lombok.Getter;
+import lombok.SneakyThrows;
+import org.apache.commons.io.IOUtils;
+import org.apache.commons.lang3.concurrent.LazyInitializer;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.core.io.Resource;
@@ -28,18 +33,18 @@ import org.springframework.http.HttpRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
-import org.springframework.http.client.ClientHttpRequestExecution;
-import org.springframework.http.client.ClientHttpRequestInterceptor;
-import org.springframework.http.client.ClientHttpResponse;
 import org.springframework.http.client.support.HttpRequestWrapper;
+import org.springframework.util.CollectionUtils;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
-import org.thingsboard.server.common.data.StringUtils;
 import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestTemplate;
+import org.springframework.web.util.UriComponentsBuilder;
+import org.thingsboard.common.util.JacksonUtil;
 import org.thingsboard.common.util.ThingsBoardExecutors;
 import org.thingsboard.rest.client.utils.RestJsonConverter;
 import org.thingsboard.server.common.data.AdminSettings;
+import org.thingsboard.server.common.data.AttributeScope;
 import org.thingsboard.server.common.data.ClaimRequest;
 import org.thingsboard.server.common.data.Customer;
 import org.thingsboard.server.common.data.Dashboard;
@@ -57,15 +62,25 @@ import org.thingsboard.server.common.data.EntityViewInfo;
 import org.thingsboard.server.common.data.EventInfo;
 import org.thingsboard.server.common.data.OtaPackage;
 import org.thingsboard.server.common.data.OtaPackageInfo;
+import org.thingsboard.server.common.data.ResourceExportData;
+import org.thingsboard.server.common.data.ResourceSubType;
 import org.thingsboard.server.common.data.SaveDeviceWithCredentialsRequest;
+import org.thingsboard.server.common.data.StringUtils;
+import org.thingsboard.server.common.data.SystemInfo;
+import org.thingsboard.server.common.data.TbImageDeleteResult;
 import org.thingsboard.server.common.data.TbResource;
 import org.thingsboard.server.common.data.TbResourceInfo;
 import org.thingsboard.server.common.data.Tenant;
 import org.thingsboard.server.common.data.TenantInfo;
 import org.thingsboard.server.common.data.TenantProfile;
 import org.thingsboard.server.common.data.UpdateMessage;
+import org.thingsboard.server.common.data.UsageInfo;
 import org.thingsboard.server.common.data.User;
+import org.thingsboard.server.common.data.UserEmailInfo;
+import org.thingsboard.server.common.data.ai.AiModel;
 import org.thingsboard.server.common.data.alarm.Alarm;
+import org.thingsboard.server.common.data.alarm.AlarmComment;
+import org.thingsboard.server.common.data.alarm.AlarmCommentInfo;
 import org.thingsboard.server.common.data.alarm.AlarmInfo;
 import org.thingsboard.server.common.data.alarm.AlarmSearchStatus;
 import org.thingsboard.server.common.data.alarm.AlarmSeverity;
@@ -77,22 +92,36 @@ import org.thingsboard.server.common.data.asset.AssetProfileInfo;
 import org.thingsboard.server.common.data.asset.AssetSearchQuery;
 import org.thingsboard.server.common.data.audit.ActionType;
 import org.thingsboard.server.common.data.audit.AuditLog;
+import org.thingsboard.server.common.data.cf.CalculatedField;
 import org.thingsboard.server.common.data.device.DeviceSearchQuery;
+import org.thingsboard.server.common.data.domain.Domain;
+import org.thingsboard.server.common.data.domain.DomainInfo;
 import org.thingsboard.server.common.data.edge.Edge;
 import org.thingsboard.server.common.data.edge.EdgeEvent;
 import org.thingsboard.server.common.data.edge.EdgeInfo;
+import org.thingsboard.server.common.data.edge.EdgeInstructions;
 import org.thingsboard.server.common.data.edge.EdgeSearchQuery;
 import org.thingsboard.server.common.data.entityview.EntityViewSearchQuery;
+import org.thingsboard.server.common.data.id.AiModelId;
+import org.thingsboard.server.common.data.id.AlarmCommentId;
 import org.thingsboard.server.common.data.id.AlarmId;
+import org.thingsboard.server.common.data.id.ApiKeyId;
 import org.thingsboard.server.common.data.id.AssetId;
 import org.thingsboard.server.common.data.id.AssetProfileId;
+import org.thingsboard.server.common.data.id.CalculatedFieldId;
 import org.thingsboard.server.common.data.id.CustomerId;
 import org.thingsboard.server.common.data.id.DashboardId;
 import org.thingsboard.server.common.data.id.DeviceId;
 import org.thingsboard.server.common.data.id.DeviceProfileId;
+import org.thingsboard.server.common.data.id.DomainId;
 import org.thingsboard.server.common.data.id.EdgeId;
 import org.thingsboard.server.common.data.id.EntityId;
 import org.thingsboard.server.common.data.id.EntityViewId;
+import org.thingsboard.server.common.data.id.MobileAppBundleId;
+import org.thingsboard.server.common.data.id.MobileAppId;
+import org.thingsboard.server.common.data.id.NotificationId;
+import org.thingsboard.server.common.data.id.NotificationRequestId;
+import org.thingsboard.server.common.data.id.OAuth2ClientId;
 import org.thingsboard.server.common.data.id.OAuth2ClientRegistrationTemplateId;
 import org.thingsboard.server.common.data.id.OtaPackageId;
 import org.thingsboard.server.common.data.id.QueueId;
@@ -106,21 +135,39 @@ import org.thingsboard.server.common.data.id.WidgetTypeId;
 import org.thingsboard.server.common.data.id.WidgetsBundleId;
 import org.thingsboard.server.common.data.kv.Aggregation;
 import org.thingsboard.server.common.data.kv.AttributeKvEntry;
+import org.thingsboard.server.common.data.kv.IntervalType;
 import org.thingsboard.server.common.data.kv.TsKvEntry;
+import org.thingsboard.server.common.data.mobile.app.MobileApp;
+import org.thingsboard.server.common.data.mobile.bundle.MobileAppBundle;
+import org.thingsboard.server.common.data.mobile.bundle.MobileAppBundleInfo;
+import org.thingsboard.server.common.data.notification.Notification;
+import org.thingsboard.server.common.data.notification.NotificationDeliveryMethod;
+import org.thingsboard.server.common.data.notification.NotificationRequest;
+import org.thingsboard.server.common.data.notification.NotificationRequestInfo;
+import org.thingsboard.server.common.data.notification.NotificationRequestPreview;
+import org.thingsboard.server.common.data.notification.settings.NotificationSettings;
+import org.thingsboard.server.common.data.notification.settings.UserNotificationSettings;
+import org.thingsboard.server.common.data.notification.targets.NotificationTarget;
+import org.thingsboard.server.common.data.notification.template.NotificationTemplate;
+import org.thingsboard.server.common.data.oauth2.OAuth2Client;
 import org.thingsboard.server.common.data.oauth2.OAuth2ClientInfo;
+import org.thingsboard.server.common.data.oauth2.OAuth2ClientLoginInfo;
 import org.thingsboard.server.common.data.oauth2.OAuth2ClientRegistrationTemplate;
-import org.thingsboard.server.common.data.oauth2.OAuth2Info;
 import org.thingsboard.server.common.data.oauth2.PlatformType;
 import org.thingsboard.server.common.data.ota.ChecksumAlgorithm;
 import org.thingsboard.server.common.data.ota.OtaPackageType;
 import org.thingsboard.server.common.data.page.PageData;
+import org.thingsboard.server.common.data.pat.ApiKey;
+import org.thingsboard.server.common.data.pat.ApiKeyInfo;
 import org.thingsboard.server.common.data.page.PageLink;
 import org.thingsboard.server.common.data.page.SortOrder;
 import org.thingsboard.server.common.data.page.TimePageLink;
 import org.thingsboard.server.common.data.plugin.ComponentDescriptor;
 import org.thingsboard.server.common.data.plugin.ComponentType;
+import org.thingsboard.server.common.data.query.AlarmCountQuery;
 import org.thingsboard.server.common.data.query.AlarmData;
 import org.thingsboard.server.common.data.query.AlarmDataQuery;
+import org.thingsboard.server.common.data.query.AvailableEntityKeys;
 import org.thingsboard.server.common.data.query.EntityCountQuery;
 import org.thingsboard.server.common.data.query.EntityData;
 import org.thingsboard.server.common.data.query.EntityDataQuery;
@@ -154,6 +201,7 @@ import org.thingsboard.server.common.data.sync.vc.VersionLoadResult;
 import org.thingsboard.server.common.data.sync.vc.VersionedEntityInfo;
 import org.thingsboard.server.common.data.sync.vc.request.create.VersionCreateRequest;
 import org.thingsboard.server.common.data.sync.vc.request.load.VersionLoadRequest;
+import org.thingsboard.server.common.data.widget.DeprecatedFilter;
 import org.thingsboard.server.common.data.widget.WidgetType;
 import org.thingsboard.server.common.data.widget.WidgetTypeDetails;
 import org.thingsboard.server.common.data.widget.WidgetTypeInfo;
@@ -170,80 +218,122 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 import static org.thingsboard.server.common.data.StringUtils.isEmpty;
 
-/**
- * @author Andrew Shvayka
- */
-public class RestClient implements ClientHttpRequestInterceptor, Closeable {
-    private static final String JWT_TOKEN_HEADER_PARAM = "X-Authorization";
-    protected final RestTemplate restTemplate;
-    protected final String baseURL;
-    private String token;
-    private String refreshToken;
-    private final ObjectMapper objectMapper = new ObjectMapper();
-    private ExecutorService service = ThingsBoardExecutors.newWorkStealingPool(10, getClass());
+public class RestClient implements Closeable {
 
+    private static final String TOKEN_HEADER_PARAM = "X-Authorization";
+    private static final long AVG_REQUEST_TIMEOUT = TimeUnit.SECONDS.toMillis(30);
     protected static final String ACTIVATE_TOKEN_REGEX = "/api/noauth/activate?activateToken=";
+    private final LazyInitializer<ExecutorService> executor = LazyInitializer.<ExecutorService>builder()
+            .setInitializer(() -> ThingsBoardExecutors.newWorkStealingPool(10, getClass()))
+            .get();
+    @Getter
+    protected final RestTemplate restTemplate;
+    protected final RestTemplate loginRestTemplate;
+    protected final String baseURL;
+
+    private String username;
+    private String password;
+    private String mainToken;
+    @Getter
+    private String refreshToken;
+    private long mainTokenExpTs;
+    private long refreshTokenExpTs;
+    private long clientServerTimeDiff;
+
+    public enum AuthType {JWT, API_KEY}
 
     public RestClient(String baseURL) {
         this(new RestTemplate(), baseURL);
     }
 
     public RestClient(RestTemplate restTemplate, String baseURL) {
+        this(restTemplate, baseURL, AuthType.JWT, null);
+    }
+
+    public RestClient(RestTemplate restTemplate, String baseURL, String accessToken) {
+        this(restTemplate, baseURL, AuthType.JWT, accessToken);
+    }
+
+    public RestClient(RestTemplate restTemplate, String baseURL, AuthType authType, String token) {
         this.restTemplate = restTemplate;
+        this.loginRestTemplate = new RestTemplate(restTemplate.getRequestFactory());
         this.baseURL = baseURL;
-    }
-
-    @Override
-    public ClientHttpResponse intercept(HttpRequest request, byte[] bytes, ClientHttpRequestExecution execution) throws IOException {
-        HttpRequest wrapper = new HttpRequestWrapper(request);
-        wrapper.getHeaders().set(JWT_TOKEN_HEADER_PARAM, "Bearer " + token);
-        ClientHttpResponse response = execution.execute(wrapper, bytes);
-        if (response.getStatusCode() == HttpStatus.UNAUTHORIZED) {
-            synchronized (this) {
-                restTemplate.getInterceptors().remove(this);
-                refreshToken();
-                wrapper.getHeaders().set(JWT_TOKEN_HEADER_PARAM, "Bearer " + token);
-                return execution.execute(wrapper, bytes);
+        this.restTemplate.getInterceptors().add((request, bytes, execution) -> {
+            HttpRequest wrapper = new HttpRequestWrapper(request);
+            switch (authType) {
+                case JWT -> {
+                    if (token == null) {
+                        long calculatedTs = System.currentTimeMillis() + clientServerTimeDiff + AVG_REQUEST_TIMEOUT;
+                        if (calculatedTs > mainTokenExpTs) {
+                            synchronized (RestClient.this) {
+                                if (calculatedTs > mainTokenExpTs) {
+                                    if (calculatedTs < refreshTokenExpTs) {
+                                        refreshToken();
+                                    } else {
+                                        doLogin();
+                                    }
+                                }
+                            }
+                        }
+                    } else {
+                        mainToken = token;
+                    }
+                    wrapper.getHeaders().set(TOKEN_HEADER_PARAM, "Bearer " + mainToken);
+                }
+                case API_KEY -> {
+                    wrapper.getHeaders().set(TOKEN_HEADER_PARAM, "ApiKey " + token);
+                }
             }
-        }
-        return response;
+            return execution.execute(wrapper, bytes);
+        });
     }
 
-    public RestTemplate getRestTemplate() {
-        return restTemplate;
+    public static RestClient withApiKey(String baseURL, String token) {
+        return withApiKey(new RestTemplate(), baseURL, token);
+    }
+
+    public static RestClient withApiKey(RestTemplate rt, String baseURL, String token) {
+        return new RestClient(rt, baseURL, AuthType.API_KEY, token);
     }
 
     public String getToken() {
-        return token;
-    }
-
-    public String getRefreshToken() {
-        return refreshToken;
+        return mainToken;
     }
 
     public void refreshToken() {
         Map<String, String> refreshTokenRequest = new HashMap<>();
         refreshTokenRequest.put("refreshToken", refreshToken);
-        ResponseEntity<JsonNode> tokenInfo = restTemplate.postForEntity(baseURL + "/api/auth/token", refreshTokenRequest, JsonNode.class);
-        setTokenInfo(tokenInfo.getBody());
+        long ts = System.currentTimeMillis();
+        ResponseEntity<JsonNode> tokenInfo = loginRestTemplate.postForEntity(baseURL + "/api/auth/token", refreshTokenRequest, JsonNode.class);
+        setTokenInfo(ts, tokenInfo.getBody());
     }
 
     public void login(String username, String password) {
+        this.username = username;
+        this.password = password;
+        doLogin();
+    }
+
+    private void doLogin() {
+        long ts = System.currentTimeMillis();
         Map<String, String> loginRequest = new HashMap<>();
         loginRequest.put("username", username);
         loginRequest.put("password", password);
-        ResponseEntity<JsonNode> tokenInfo = restTemplate.postForEntity(baseURL + "/api/auth/login", loginRequest, JsonNode.class);
-        setTokenInfo(tokenInfo.getBody());
+        ResponseEntity<JsonNode> tokenInfo = loginRestTemplate.postForEntity(baseURL + "/api/auth/login", loginRequest, JsonNode.class);
+        setTokenInfo(ts, tokenInfo.getBody());
     }
 
-    private void setTokenInfo(JsonNode tokenInfo) {
-        this.token = tokenInfo.get("token").asText();
+    private synchronized void setTokenInfo(long ts, JsonNode tokenInfo) {
+        this.mainToken = tokenInfo.get("token").asText();
         this.refreshToken = tokenInfo.get("refreshToken").asText();
-        restTemplate.getInterceptors().add(this);
+        this.mainTokenExpTs = JWT.decode(this.mainToken).getExpiresAtAsInstant().toEpochMilli();
+        this.refreshTokenExpTs = JWT.decode(refreshToken).getExpiresAtAsInstant().toEpochMilli();
+        this.clientServerTimeDiff = JWT.decode(this.mainToken).getIssuedAtAsInstant().toEpochMilli() - ts;
     }
 
     public Optional<AdminSettings> getAdminSettings(String key) {
@@ -372,6 +462,10 @@ public class RestClient implements ClientHttpRequestInterceptor, Closeable {
         }
     }
 
+    public SystemInfo getSystemInfo() {
+        return restTemplate.getForEntity(baseURL + "/api/admin/systemInfo", SystemInfo.class).getBody();
+    }
+
     public Optional<Alarm> getAlarmById(AlarmId alarmId) {
         try {
             ResponseEntity<Alarm> alarm = restTemplate.getForEntity(baseURL + "/api/alarm/{alarmId}", Alarm.class, alarmId.getId());
@@ -414,6 +508,14 @@ public class RestClient implements ClientHttpRequestInterceptor, Closeable {
         restTemplate.postForLocation(baseURL + "/api/alarm/{alarmId}/clear", null, alarmId.getId());
     }
 
+    public void assignAlarm(AlarmId alarmId, UserId userId) {
+        restTemplate.postForLocation(baseURL + "/api/alarm/{alarmId}/assign/{userId}", null, alarmId.getId(), userId.getId());
+    }
+
+    public void unassignAlarm(AlarmId alarmId) {
+        restTemplate.delete(baseURL + "/api/alarm/{alarmId}/assign", alarmId.getId());
+    }
+
     public PageData<AlarmInfo> getAlarms(EntityId entityId, AlarmSearchStatus searchStatus, AlarmStatus status, TimePageLink pageLink, Boolean fetchOriginator) {
         String urlSecondPart = "/api/alarm/{entityType}/{entityId}?fetchOriginator={fetchOriginator}";
         Map<String, String> params = new HashMap<>();
@@ -427,6 +529,99 @@ public class RestClient implements ClientHttpRequestInterceptor, Closeable {
         if (status != null) {
             params.put("status", status.name());
             urlSecondPart += "&status={status}";
+        }
+
+        addTimePageLinkToParam(params, pageLink);
+
+        return restTemplate.exchange(
+                baseURL + urlSecondPart + "&" + getTimeUrlParams(pageLink),
+                HttpMethod.GET,
+                HttpEntity.EMPTY,
+                new ParameterizedTypeReference<PageData<AlarmInfo>>() {
+                },
+                params).getBody();
+    }
+
+    public PageData<AlarmInfo> getAllAlarms(AlarmSearchStatus searchStatus, AlarmStatus status, TimePageLink pageLink, Boolean fetchOriginator) {
+        String urlSecondPart = "/api/alarms?";
+        Map<String, String> params = new HashMap<>();
+        if (fetchOriginator != null) {
+            params.put("fetchOriginator", String.valueOf(fetchOriginator));
+            urlSecondPart += "&fetchOriginator={fetchOriginator}";
+        }
+        if (searchStatus != null) {
+            params.put("searchStatus", searchStatus.name());
+            urlSecondPart += "&searchStatus={searchStatus}";
+        }
+        if (status != null) {
+            params.put("status", status.name());
+            urlSecondPart += "&status={status}";
+        }
+
+        addTimePageLinkToParam(params, pageLink);
+
+        return restTemplate.exchange(
+                baseURL + urlSecondPart + "&" + getTimeUrlParams(pageLink),
+                HttpMethod.GET,
+                HttpEntity.EMPTY,
+                new ParameterizedTypeReference<PageData<AlarmInfo>>() {
+                },
+                params).getBody();
+    }
+
+    public PageData<AlarmInfo> getAlarmsV2(EntityId entityId, List<AlarmSearchStatus> statusList, List<AlarmSeverity> severityList,
+                                           List<String> typeList, String assignedId, TimePageLink pageLink) {
+        String urlSecondPart = "/api/v2/alarm/{entityType}/{entityId}?";
+        Map<String, String> params = new HashMap<>();
+        params.put("entityType", entityId.getEntityType().name());
+        params.put("entityId", entityId.getId().toString());
+        if (!CollectionUtils.isEmpty(statusList)) {
+            params.put("statusList", listEnumToString(statusList));
+            urlSecondPart += "&statusList={statusList}";
+        }
+        if (!CollectionUtils.isEmpty(severityList)) {
+            params.put("severityList", listEnumToString(severityList));
+            urlSecondPart += "&severityList={severityList}";
+        }
+        if (!CollectionUtils.isEmpty(typeList)) {
+            params.put("typeList", String.join(",", typeList));
+            urlSecondPart += "&typeList={typeList}";
+        }
+        if (assignedId != null) {
+            params.put("assignedId", assignedId);
+            urlSecondPart += "&assignedId={assignedId}";
+        }
+
+        addTimePageLinkToParam(params, pageLink);
+
+        return restTemplate.exchange(
+                baseURL + urlSecondPart + "&" + getTimeUrlParams(pageLink),
+                HttpMethod.GET,
+                HttpEntity.EMPTY,
+                new ParameterizedTypeReference<PageData<AlarmInfo>>() {
+                },
+                params).getBody();
+    }
+
+    public PageData<AlarmInfo> getAllAlarmsV2(List<AlarmSearchStatus> statusList, List<AlarmSeverity> severityList,
+                                              List<String> typeList, String assignedId, TimePageLink pageLink) {
+        String urlSecondPart = "/api/v2/alarms?";
+        Map<String, String> params = new HashMap<>();
+        if (!CollectionUtils.isEmpty(statusList)) {
+            params.put("statusList", listEnumToString(statusList));
+            urlSecondPart += "&statusList={statusList}";
+        }
+        if (!CollectionUtils.isEmpty(severityList)) {
+            params.put("severityList", listEnumToString(severityList));
+            urlSecondPart += "&severityList={severityList}";
+        }
+        if (!CollectionUtils.isEmpty(typeList)) {
+            params.put("typeList", String.join(",", typeList));
+            urlSecondPart += "&typeList={typeList}";
+        }
+        if (assignedId != null) {
+            params.put("assignedId", assignedId);
+            urlSecondPart += "&assignedId={assignedId}";
         }
 
         addTimePageLinkToParam(params, pageLink);
@@ -461,6 +656,40 @@ public class RestClient implements ClientHttpRequestInterceptor, Closeable {
     @Deprecated
     public Alarm createAlarm(Alarm alarm) {
         return restTemplate.postForEntity(baseURL + "/api/alarm", alarm, Alarm.class).getBody();
+    }
+
+    public PageData<EntitySubtype> getAlarmTypes(PageLink pageLink) {
+        Map<String, String> params = new HashMap<>();
+        addPageLinkToParam(params, pageLink);
+        return restTemplate.exchange(
+                baseURL + "/api/alarm/types?" + getUrlParams(pageLink),
+                HttpMethod.GET,
+                HttpEntity.EMPTY,
+                new ParameterizedTypeReference<PageData<EntitySubtype>>() {
+                },
+                params).getBody();
+    }
+
+    public AlarmComment saveAlarmComment(AlarmId alarmId, AlarmComment alarmComment) {
+        return restTemplate.postForEntity(baseURL + "/api/alarm/{alarmId}/comment", alarmComment, AlarmComment.class, alarmId.getId()).getBody();
+    }
+
+    public void deleteAlarmComment(AlarmId alarmId, AlarmCommentId alarmCommentId) {
+        restTemplate.delete(baseURL + "/api/alarm/{alarmId}/comment/{alarmCommentId}",
+                alarmId.getId(), alarmCommentId.getId());
+    }
+
+    public PageData<AlarmCommentInfo> getAlarmComments(AlarmId alarmId, PageLink pageLink) {
+        Map<String, String> params = new HashMap<>();
+        params.put("alarmId", alarmId.getId().toString());
+        addPageLinkToParam(params, pageLink);
+        return restTemplate.exchange(
+                baseURL + "/api/alarm/{alarmId}/comment?" + getUrlParams(pageLink),
+                HttpMethod.GET,
+                HttpEntity.EMPTY,
+                new ParameterizedTypeReference<PageData<AlarmCommentInfo>>() {
+                },
+                params).getBody();
     }
 
     public Optional<Asset> getAssetById(AssetId assetId) {
@@ -635,6 +864,7 @@ public class RestClient implements ClientHttpRequestInterceptor, Closeable {
                 }).getBody();
     }
 
+    @Deprecated(since = "3.6.2")
     public List<EntitySubtype> getAssetTypes() {
         return restTemplate.exchange(URI.create(
                         baseURL + "/api/asset/types"),
@@ -642,6 +872,15 @@ public class RestClient implements ClientHttpRequestInterceptor, Closeable {
                 HttpEntity.EMPTY,
                 new ParameterizedTypeReference<List<EntitySubtype>>() {
                 }).getBody();
+    }
+
+    public List<EntitySubtype> getAssetProfileNames(boolean activeOnly) {
+        return restTemplate.exchange(
+                baseURL + "/api/assetProfile/names?activeOnly={activeOnly}",
+                HttpMethod.GET,
+                HttpEntity.EMPTY,
+                new ParameterizedTypeReference<List<EntitySubtype>>() {
+                }, activeOnly).getBody();
     }
 
     public BulkImportResult<Asset> processAssetsBulkImport(BulkImportRequest request) {
@@ -767,7 +1006,7 @@ public class RestClient implements ClientHttpRequestInterceptor, Closeable {
     }
 
     public void changePassword(String currentPassword, String newPassword) {
-        ObjectNode changePasswordRequest = objectMapper.createObjectNode();
+        ObjectNode changePasswordRequest = JacksonUtil.newObjectNode();
         changePasswordRequest.put("currentPassword", currentPassword);
         changePasswordRequest.put("newPassword", newPassword);
         restTemplate.postForLocation(baseURL + "/api/auth/changePassword", changePasswordRequest);
@@ -792,7 +1031,7 @@ public class RestClient implements ClientHttpRequestInterceptor, Closeable {
     }
 
     public void requestResetPasswordByEmail(String email) {
-        ObjectNode resetPasswordByEmailRequest = objectMapper.createObjectNode();
+        ObjectNode resetPasswordByEmailRequest = JacksonUtil.newObjectNode();
         resetPasswordByEmailRequest.put("email", email);
         restTemplate.postForLocation(baseURL + "/api/noauth/resetPasswordByEmail", resetPasswordByEmailRequest);
     }
@@ -802,7 +1041,7 @@ public class RestClient implements ClientHttpRequestInterceptor, Closeable {
     }
 
     public Optional<JsonNode> activateUser(UserId userId, String password, boolean sendActivationMail) {
-        ObjectNode activateRequest = objectMapper.createObjectNode();
+        ObjectNode activateRequest = JacksonUtil.newObjectNode();
         activateRequest.put("activateToken", getActivateToken(userId));
         activateRequest.put("password", password);
         try {
@@ -1260,13 +1499,17 @@ public class RestClient implements ClientHttpRequestInterceptor, Closeable {
                 }, params).getBody();
     }
 
-    public PageData<DeviceInfo> getTenantDeviceInfos(String type, DeviceProfileId deviceProfileId, PageLink pageLink) {
+    public PageData<DeviceInfo> getTenantDeviceInfos(String type, Boolean active, DeviceProfileId deviceProfileId, PageLink pageLink) {
         Map<String, String> params = new HashMap<>();
         params.put("type", type);
         params.put("deviceProfileId", deviceProfileId != null ? deviceProfileId.toString() : null);
+        if (active != null) {
+            params.put("active", active.toString());
+        }
         addPageLinkToParam(params, pageLink);
         return restTemplate.exchange(
-                baseURL + "/api/tenant/deviceInfos?type={type}&deviceProfileId={deviceProfileId}&" + getUrlParams(pageLink),
+                baseURL + "/api/tenant/deviceInfos?type={type}&deviceProfileId={deviceProfileId}&"
+                        + (active != null ? "active={active}&" : "") + getUrlParams(pageLink),
                 HttpMethod.GET, HttpEntity.EMPTY,
                 new ParameterizedTypeReference<PageData<DeviceInfo>>() {
                 }, params).getBody();
@@ -1326,6 +1569,7 @@ public class RestClient implements ClientHttpRequestInterceptor, Closeable {
                 }).getBody();
     }
 
+    @Deprecated(since = "3.6.2")
     public List<EntitySubtype> getDeviceTypes() {
         return restTemplate.exchange(
                 baseURL + "/api/device/types",
@@ -1333,6 +1577,15 @@ public class RestClient implements ClientHttpRequestInterceptor, Closeable {
                 HttpEntity.EMPTY,
                 new ParameterizedTypeReference<List<EntitySubtype>>() {
                 }).getBody();
+    }
+
+    public List<EntitySubtype> getDeviceProfileNames(boolean activeOnly) {
+        return restTemplate.exchange(
+                baseURL + "/api/deviceProfile/names?activeOnly={activeOnly}",
+                HttpMethod.GET,
+                HttpEntity.EMPTY,
+                new ParameterizedTypeReference<List<EntitySubtype>>() {
+                }, activeOnly).getBody();
     }
 
     public JsonNode claimDevice(String deviceName, ClaimRequest claimRequest) {
@@ -1583,6 +1836,17 @@ public class RestClient implements ClientHttpRequestInterceptor, Closeable {
                 }).getBody();
     }
 
+    public AvailableEntityKeys findAvailableEntityKeysByQuery(EntityDataQuery query, boolean includeTimeseries, boolean includeAttributes, AttributeScope scope) {
+        var uri = UriComponentsBuilder.fromUriString(baseURL)
+                .path("/api/entitiesQuery/find/keys")
+                .queryParam("timeseries", includeTimeseries)
+                .queryParam("attributes", includeAttributes)
+                .queryParamIfPresent("scope", Optional.ofNullable(scope))
+                .build()
+                .toUri();
+        return restTemplate.exchange(uri, HttpMethod.POST, new HttpEntity<>(query), new ParameterizedTypeReference<AvailableEntityKeys>() {}).getBody();
+    }
+
     public PageData<AlarmData> findAlarmDataByQuery(AlarmDataQuery query) {
         return restTemplate.exchange(
                 baseURL + "/api/alarmsQuery/find",
@@ -1591,8 +1855,16 @@ public class RestClient implements ClientHttpRequestInterceptor, Closeable {
                 }).getBody();
     }
 
+    public Long countAlarmsByQuery(AlarmCountQuery query) {
+        return restTemplate.postForObject(baseURL + "/api/alarmsQuery/count", query, Long.class);
+    }
+
     public void saveRelation(EntityRelation relation) {
         restTemplate.postForLocation(baseURL + "/api/relation", relation);
+    }
+
+    public EntityRelation saveRelationV2(EntityRelation relation) {
+        return restTemplate.postForEntity(baseURL + "/api/v2/relation", relation, EntityRelation.class).getBody();
     }
 
     public void deleteRelation(EntityId fromId, String relationType, RelationTypeGroup relationTypeGroup, EntityId toId) {
@@ -1604,6 +1876,26 @@ public class RestClient implements ClientHttpRequestInterceptor, Closeable {
         params.put("toId", toId.getId().toString());
         params.put("toType", toId.getEntityType().name());
         restTemplate.delete(baseURL + "/api/relation?fromId={fromId}&fromType={fromType}&relationType={relationType}&relationTypeGroup={relationTypeGroup}&toId={toId}&toType={toType}", params);
+    }
+
+    public Optional<EntityRelation> deleteRelationV2(EntityId fromId, String relationType, RelationTypeGroup relationTypeGroup, EntityId toId) {
+        Map<String, String> params = new HashMap<>();
+        params.put("fromId", fromId.getId().toString());
+        params.put("fromType", fromId.getEntityType().name());
+        params.put("relationType", relationType);
+        params.put("relationTypeGroup", relationTypeGroup.name());
+        params.put("toId", toId.getId().toString());
+        params.put("toType", toId.getEntityType().name());
+        try {
+            var relation = restTemplate.exchange(baseURL + "/api/relation?fromId={fromId}&fromType={fromType}&relationType={relationType}&relationTypeGroup={relationTypeGroup}&toId={toId}&toType={toType}", HttpMethod.DELETE, HttpEntity.EMPTY, EntityRelation.class, params);
+            return Optional.ofNullable(relation.getBody());
+        } catch (HttpClientErrorException exception) {
+            if (exception.getStatusCode() == HttpStatus.NOT_FOUND) {
+                return Optional.empty();
+            } else {
+                throw exception;
+            }
+        }
     }
 
     public void deleteRelations(EntityId entityId) {
@@ -1948,7 +2240,7 @@ public class RestClient implements ClientHttpRequestInterceptor, Closeable {
                 }).getBody();
     }
 
-    public List<OAuth2ClientInfo> getOAuth2Clients(String pkgName, PlatformType platformType) {
+    public List<OAuth2ClientLoginInfo> getOAuth2Clients(String pkgName, PlatformType platformType) {
         Map<String, String> params = new HashMap<>();
         StringBuilder urlBuilder = new StringBuilder(baseURL);
         urlBuilder.append("/api/noauth/oauth2Clients");
@@ -1969,16 +2261,145 @@ public class RestClient implements ClientHttpRequestInterceptor, Closeable {
                 urlBuilder.toString(),
                 HttpMethod.POST,
                 HttpEntity.EMPTY,
-                new ParameterizedTypeReference<List<OAuth2ClientInfo>>() {
+                new ParameterizedTypeReference<List<OAuth2ClientLoginInfo>>() {
                 }, params).getBody();
     }
 
-    public OAuth2Info getCurrentOAuth2Info() {
-        return restTemplate.getForEntity(baseURL + "/api/oauth2/config", OAuth2Info.class).getBody();
+    public PageData<OAuth2ClientInfo> getTenantOAuth2Clients() {
+        return restTemplate.exchange(
+                baseURL + "/api/oauth2/client/infos",
+                HttpMethod.GET,
+                HttpEntity.EMPTY,
+                new ParameterizedTypeReference<PageData<OAuth2ClientInfo>>() {
+                }).getBody();
     }
 
-    public OAuth2Info saveOAuth2Info(OAuth2Info oauth2Info) {
-        return restTemplate.postForEntity(baseURL + "/api/oauth2/config", oauth2Info, OAuth2Info.class).getBody();
+    public Optional<OAuth2Client> getOauth2ClientById(OAuth2ClientId oAuth2ClientId) {
+        try {
+            ResponseEntity<OAuth2Client> oauth2Client = restTemplate.getForEntity(baseURL + "/api/oauth2/client/{id}", OAuth2Client.class, oAuth2ClientId.getId());
+            return Optional.ofNullable(oauth2Client.getBody());
+        } catch (HttpClientErrorException exception) {
+            if (exception.getStatusCode() == HttpStatus.NOT_FOUND) {
+                return Optional.empty();
+            } else {
+                throw exception;
+            }
+        }
+    }
+
+    public OAuth2Client saveOAuth2Client(OAuth2Client oAuth2Client) {
+        return restTemplate.postForEntity(baseURL + "/api/oauth2/client", oAuth2Client, OAuth2Client.class).getBody();
+    }
+
+    public void deleteOauth2CLient(OAuth2ClientId oAuth2ClientId) {
+        restTemplate.delete(baseURL + "/api/oauth2/client/{id}", oAuth2ClientId.getId());
+    }
+
+    public PageData<DomainInfo> getTenantDomainInfos(PageLink pageLink) {
+        Map<String, String> params = new HashMap<>();
+        addPageLinkToParam(params, pageLink);
+        return restTemplate.exchange(
+                baseURL + "/api/domain/infos?" + getUrlParams(pageLink),
+                HttpMethod.GET,
+                HttpEntity.EMPTY,
+                new ParameterizedTypeReference<PageData<DomainInfo>>() {
+                },
+                params).getBody();
+    }
+
+    public Optional<DomainInfo> getDomainInfoById(DomainId domainId) {
+        try {
+            ResponseEntity<DomainInfo> domainInfo = restTemplate.getForEntity(baseURL + "/api/domain/info/{id}", DomainInfo.class, domainId.getId());
+            return Optional.ofNullable(domainInfo.getBody());
+        } catch (HttpClientErrorException exception) {
+            if (exception.getStatusCode() == HttpStatus.NOT_FOUND) {
+                return Optional.empty();
+            } else {
+                throw exception;
+            }
+        }
+    }
+
+    public Domain saveDomain(Domain domain) {
+        return restTemplate.postForEntity(baseURL + "/api/domain", domain, Domain.class).getBody();
+    }
+
+    public void deleteDomain(DomainId domainId) {
+        restTemplate.delete(baseURL + "/api/domain/{id}", domainId.getId());
+    }
+
+    public void updateDomainOauth2Clients(DomainId domainId, UUID[] oauth2ClientIds) {
+        restTemplate.postForLocation(baseURL + "/api/domain/{id}/oauth2Clients", oauth2ClientIds, domainId.getId());
+    }
+
+    public PageData<MobileApp> getTenantMobileApps(PageLink pageLink) {
+        Map<String, String> params = new HashMap<>();
+        addPageLinkToParam(params, pageLink);
+        return restTemplate.exchange(
+                baseURL + "/api/mobile/app?" + getUrlParams(pageLink),
+                HttpMethod.GET,
+                HttpEntity.EMPTY,
+                new ParameterizedTypeReference<PageData<MobileApp>>() {
+                },
+                params).getBody();
+    }
+
+    public Optional<MobileApp> getMobileAppById(MobileAppId mobileAppId) {
+        try {
+            ResponseEntity<MobileApp> mobileApp = restTemplate.getForEntity(baseURL + "/api/mobile/app/{id}", MobileApp.class, mobileAppId.getId());
+            return Optional.ofNullable(mobileApp.getBody());
+        } catch (HttpClientErrorException exception) {
+            if (exception.getStatusCode() == HttpStatus.NOT_FOUND) {
+                return Optional.empty();
+            } else {
+                throw exception;
+            }
+        }
+    }
+
+    public MobileApp saveMobileApp(MobileApp mobileApp) {
+        return restTemplate.postForEntity(baseURL + "/api/mobile/app", mobileApp, MobileApp.class).getBody();
+    }
+
+    public void deleteMobileApp(MobileAppId mobileAppId) {
+        restTemplate.delete(baseURL + "/api/mobile/app/{id}", mobileAppId.getId());
+    }
+
+    public PageData<MobileAppBundleInfo> getTenantMobileBundleInfos(PageLink pageLink) {
+        Map<String, String> params = new HashMap<>();
+        addPageLinkToParam(params, pageLink);
+        return restTemplate.exchange(
+                baseURL + "/api/mobile/bundle/infos?" + getUrlParams(pageLink),
+                HttpMethod.GET,
+                HttpEntity.EMPTY,
+                new ParameterizedTypeReference<PageData<MobileAppBundleInfo>>() {
+                },
+                params).getBody();
+    }
+
+    public Optional<MobileAppBundle> getMobileBundleById(MobileAppBundleId mobileAppBundleId) {
+        try {
+            ResponseEntity<MobileAppBundle> mobileApp = restTemplate.getForEntity(baseURL + "/api/mobile/bundle/{id}", MobileAppBundle.class, mobileAppBundleId.getId());
+            return Optional.ofNullable(mobileApp.getBody());
+        } catch (HttpClientErrorException exception) {
+            if (exception.getStatusCode() == HttpStatus.NOT_FOUND) {
+                return Optional.empty();
+            } else {
+                throw exception;
+            }
+        }
+    }
+
+    public MobileAppBundle saveMobileBundle(MobileAppBundle mobileAppBundle) {
+        return restTemplate.postForEntity(baseURL + "/api/mobile/bundle", mobileAppBundle, MobileAppBundle.class).getBody();
+    }
+
+    public void deleteMobileBundle(MobileAppBundleId mobileAppBundleId) {
+        restTemplate.delete(baseURL + "/api/mobile/bundle/{id}", mobileAppBundleId.getId());
+    }
+
+    public void updateMobileAppBundleOauth2Clients(MobileAppBundleId mobileAppBundleId, UUID[] oauth2ClientIds) {
+        restTemplate.postForLocation(baseURL + "/api/mobile/bundle/{id}/oauth2Clients", oauth2ClientIds, mobileAppBundleId.getId());
     }
 
     public String getLoginProcessingUrl() {
@@ -2143,7 +2564,7 @@ public class RestClient implements ClientHttpRequestInterceptor, Closeable {
     }
 
     public Future<List<AttributeKvEntry>> getAttributeKvEntriesAsync(EntityId entityId, List<String> keys) {
-        return service.submit(() -> getAttributeKvEntries(entityId, keys));
+        return getExecutor().submit(() -> getAttributeKvEntries(entityId, keys));
     }
 
     public List<AttributeKvEntry> getAttributesByScope(EntityId entityId, String scope, List<String> keys) {
@@ -2202,7 +2623,12 @@ public class RestClient implements ClientHttpRequestInterceptor, Closeable {
         return getTimeseries(entityId, keys, interval, agg, sortOrder != null ? sortOrder.getDirection() : null, pageLink.getStartTime(), pageLink.getEndTime(), 100, useStrictDataTypes);
     }
 
+    @Deprecated
     public List<TsKvEntry> getTimeseries(EntityId entityId, List<String> keys, Long interval, Aggregation agg, SortOrder.Direction sortOrder, Long startTime, Long endTime, Integer limit, boolean useStrictDataTypes) {
+        return getTimeseries(entityId, keys, interval, null, null, agg, sortOrder, startTime, endTime, limit, useStrictDataTypes);
+    }
+
+    public List<TsKvEntry> getTimeseries(EntityId entityId, List<String> keys, Long interval, IntervalType intervalType, String timeZone, Aggregation agg, SortOrder.Direction sortOrder, Long startTime, Long endTime, Integer limit, boolean useStrictDataTypes) {
         Map<String, String> params = new HashMap<>();
         params.put("entityType", entityId.getEntityType().name());
         params.put("entityId", entityId.getId().toString());
@@ -2215,6 +2641,16 @@ public class RestClient implements ClientHttpRequestInterceptor, Closeable {
 
         StringBuilder urlBuilder = new StringBuilder(baseURL);
         urlBuilder.append("/api/plugins/telemetry/{entityType}/{entityId}/values/timeseries?keys={keys}&interval={interval}&limit={limit}&agg={agg}&useStrictDataTypes={useStrictDataTypes}&orderBy={orderBy}");
+
+        if (intervalType != null) {
+            urlBuilder.append("&intervalType={intervalType}");
+            params.put("intervalType", intervalType.name());
+        }
+
+        if (timeZone != null) {
+            urlBuilder.append("&timeZone={timeZone}");
+            params.put("timeZone", timeZone);
+        }
 
         if (startTime != null) {
             urlBuilder.append("&startTs={startTs}");
@@ -2301,7 +2737,8 @@ public class RestClient implements ClientHttpRequestInterceptor, Closeable {
                                           boolean deleteAllDataForKeys,
                                           Long startTs,
                                           Long endTs,
-                                          boolean rewriteLatestIfDeleted) {
+                                          boolean rewriteLatestIfDeleted,
+                                          boolean deleteLatest) {
         Map<String, String> params = new HashMap<>();
         params.put("entityType", entityId.getEntityType().name());
         params.put("entityId", entityId.getId().toString());
@@ -2310,17 +2747,34 @@ public class RestClient implements ClientHttpRequestInterceptor, Closeable {
         params.put("startTs", startTs.toString());
         params.put("endTs", endTs.toString());
         params.put("rewriteLatestIfDeleted", String.valueOf(rewriteLatestIfDeleted));
+        params.put("deleteLatest", String.valueOf(deleteLatest));
 
         return restTemplate
                 .exchange(
-                        baseURL + "/api/plugins/telemetry/{entityType}/{entityId}/timeseries/delete?keys={keys}&deleteAllDataForKeys={deleteAllDataForKeys}&startTs={startTs}&endTs={endTs}&rewriteLatestIfDeleted={rewriteLatestIfDeleted}",
+                        baseURL + "/api/plugins/telemetry/{entityType}/{entityId}/timeseries/delete?keys={keys}&deleteAllDataForKeys={deleteAllDataForKeys}&startTs={startTs}&endTs={endTs}&rewriteLatestIfDeleted={rewriteLatestIfDeleted}&deleteLatest={deleteLatest}",
                         HttpMethod.DELETE,
                         HttpEntity.EMPTY,
                         Object.class,
                         params)
                 .getStatusCode()
                 .is2xxSuccessful();
+    }
 
+    public boolean deleteEntityLatestTimeseries(EntityId entityId, List<String> keys) {
+        Map<String, String> params = new HashMap<>();
+        params.put("entityType", entityId.getEntityType().name());
+        params.put("entityId", entityId.getId().toString());
+        params.put("keys", listToString(keys));
+
+        return restTemplate
+                .exchange(
+                        baseURL + "/api/plugins/telemetry/{entityType}/{entityId}/timeseries/latest/delete?keys={keys}",
+                        HttpMethod.DELETE,
+                        HttpEntity.EMPTY,
+                        Object.class,
+                        params)
+                .getStatusCode()
+                .is2xxSuccessful();
     }
 
     public boolean deleteEntityAttributes(DeviceId deviceId, String scope, List<String> keys) {
@@ -2407,6 +2861,14 @@ public class RestClient implements ClientHttpRequestInterceptor, Closeable {
                 HttpEntity.EMPTY,
                 new ParameterizedTypeReference<PageData<TenantInfo>>() {
                 }, params).getBody();
+    }
+
+    public UsageInfo getUsageInfo() {
+        return restTemplate.exchange(
+                baseURL + "/api/usage",
+                HttpMethod.GET,
+                HttpEntity.EMPTY,
+                UsageInfo.class).getBody();
     }
 
     public Optional<TenantProfile> getTenantProfileById(TenantProfileId tenantProfileId) {
@@ -2530,6 +2992,17 @@ public class RestClient implements ClientHttpRequestInterceptor, Closeable {
                 }, params).getBody();
     }
 
+    public PageData<UserEmailInfo> getUsersByQuery(PageLink pageLink) {
+        Map<String, String> params = new HashMap<>();
+        addPageLinkToParam(params, pageLink);
+        return restTemplate.exchange(
+                baseURL + "/api/users/info?" + getUrlParams(pageLink),
+                HttpMethod.GET,
+                HttpEntity.EMPTY,
+                new ParameterizedTypeReference<PageData<UserEmailInfo>>() {
+                }, params).getBody();
+    }
+
     public PageData<User> getTenantAdmins(TenantId tenantId, PageLink pageLink) {
         Map<String, String> params = new HashMap<>();
         params.put("tenantId", tenantId.getId().toString());
@@ -2556,12 +3029,63 @@ public class RestClient implements ClientHttpRequestInterceptor, Closeable {
                 }, params).getBody();
     }
 
+    public PageData<UserEmailInfo> getUsersForAssign(AlarmId alarmId, PageLink pageLink) {
+        Map<String, String> params = new HashMap<>();
+        params.put("alarmId", alarmId.getId().toString());
+        addPageLinkToParam(params, pageLink);
+
+        return restTemplate.exchange(
+                baseURL + "/users/assign/{alarmId}" + getUrlParams(pageLink),
+                HttpMethod.GET,
+                HttpEntity.EMPTY,
+                new ParameterizedTypeReference<PageData<UserEmailInfo>>() {
+                }, params).getBody();
+    }
+
     public void setUserCredentialsEnabled(UserId userId, boolean userCredentialsEnabled) {
         restTemplate.postForLocation(
                 baseURL + "/api/user/{userId}/userCredentialsEnabled?userCredentialsEnabled={userCredentialsEnabled}",
                 null,
                 userId.getId(),
                 userCredentialsEnabled);
+    }
+
+    public ApiKey saveApiKey(ApiKeyInfo apiKeyInfo) {
+        return restTemplate.postForEntity(baseURL + "/api/apiKey", apiKeyInfo, ApiKey.class).getBody();
+    }
+
+    public PageData<ApiKeyInfo> getUserApiKeys(UserId userId, PageLink pageLink) {
+        Map<String, String> params = new HashMap<>();
+        params.put("userId", userId.getId().toString());
+        addPageLinkToParam(params, pageLink);
+        return restTemplate.exchange(
+                baseURL + "/api/apiKeys/{userId}?" + getUrlParams(pageLink),
+                HttpMethod.GET,
+                HttpEntity.EMPTY,
+                new ParameterizedTypeReference<PageData<ApiKeyInfo>>() {}, params).getBody();
+    }
+
+    public ApiKeyInfo updateApiKeyDescription(ApiKeyId apiKeyId, String description) {
+        return restTemplate.exchange(
+                baseURL + "/api/apiKey/{id}/description",
+                HttpMethod.PUT,
+                new HttpEntity<>(description),
+                ApiKeyInfo.class,
+                apiKeyId.getId()).getBody();
+    }
+
+    public ApiKeyInfo enableApiKey(ApiKeyId apiKeyId, boolean enabled) {
+        return restTemplate.exchange(
+                baseURL + "/api/apiKey/{id}/enabled/{enabledValue}",
+                HttpMethod.PUT,
+                HttpEntity.EMPTY,
+                ApiKeyInfo.class,
+                apiKeyId.getId(),
+                enabled).getBody();
+    }
+
+    public void deleteApiKey(ApiKeyId apiKeyId) {
+        restTemplate.delete(baseURL + "/api/apiKey/{id}", apiKeyId.getId());
     }
 
     public Optional<WidgetsBundle> getWidgetsBundleById(WidgetsBundleId widgetsBundleId) {
@@ -2582,15 +3106,33 @@ public class RestClient implements ClientHttpRequestInterceptor, Closeable {
         return restTemplate.postForEntity(baseURL + "/api/widgetsBundle", widgetsBundle, WidgetsBundle.class).getBody();
     }
 
+    public void updateWidgetsBundleWidgetTypes(WidgetsBundleId widgetsBundleId, List<WidgetTypeId> widgetTypeIds) {
+        var httpEntity = new HttpEntity<>(widgetTypeIds.stream()
+                .map(widgetTypeId -> widgetTypeId.getId().toString())
+                .collect(Collectors.toList()));
+        restTemplate.exchange(baseURL + "/api/widgetsBundle/{widgetsBundleId}/widgetTypes",
+                HttpMethod.POST, httpEntity, Void.class, widgetsBundleId.getId());
+    }
+
+    public void updateWidgetsBundleWidgetFqns(WidgetsBundleId widgetsBundleId, List<String> widgetTypeFqns) {
+        restTemplate.exchange(baseURL + "/api/widgetsBundle/{widgetsBundleId}/widgetTypeFqns",
+                HttpMethod.POST, new HttpEntity<>(widgetTypeFqns), Void.class, widgetsBundleId.getId());
+    }
+
     public void deleteWidgetsBundle(WidgetsBundleId widgetsBundleId) {
         restTemplate.delete(baseURL + "/api/widgetsBundle/{widgetsBundleId}", widgetsBundleId.getId());
     }
 
     public PageData<WidgetsBundle> getWidgetsBundles(PageLink pageLink) {
+        return getWidgetsBundles(pageLink, null, null);
+    }
+
+    public PageData<WidgetsBundle> getWidgetsBundles(PageLink pageLink, Boolean tenantOnly, Boolean fullSearch) {
         Map<String, String> params = new HashMap<>();
         addPageLinkToParam(params, pageLink);
+        addTenantOnlyAndFullSearchToParams(tenantOnly, fullSearch, params);
         return restTemplate.exchange(
-                baseURL + "/api/widgetsBundles?" + getUrlParams(pageLink),
+                baseURL + "/api/widgetsBundles?" + getUrlParams(pageLink) + getTenantOnlyAndFullSearchUrlParams(tenantOnly, fullSearch),
                 HttpMethod.GET,
                 HttpEntity.EMPTY,
                 new ParameterizedTypeReference<PageData<WidgetsBundle>>() {
@@ -2620,14 +3162,54 @@ public class RestClient implements ClientHttpRequestInterceptor, Closeable {
         }
     }
 
+    public Optional<WidgetTypeInfo> getWidgetTypeInfoById(WidgetTypeId widgetTypeId) {
+        try {
+            ResponseEntity<WidgetTypeInfo> widgetTypeInfo =
+                    restTemplate.getForEntity(baseURL + "/api/widgetTypeInfo/{widgetTypeId}", WidgetTypeInfo.class, widgetTypeId.getId());
+            return Optional.ofNullable(widgetTypeInfo.getBody());
+        } catch (HttpClientErrorException exception) {
+            if (exception.getStatusCode() == HttpStatus.NOT_FOUND) {
+                return Optional.empty();
+            }
+            throw exception;
+        }
+    }
+
     public WidgetTypeDetails saveWidgetType(WidgetTypeDetails widgetTypeDetails) {
-        return restTemplate.postForEntity(baseURL + "/api/widgetType", widgetTypeDetails, WidgetTypeDetails.class).getBody();
+        return saveWidgetType(widgetTypeDetails, null);
+    }
+
+    public WidgetTypeDetails saveWidgetType(WidgetTypeDetails widgetTypeDetails, Boolean updateExistingByFqn) {
+        if (updateExistingByFqn == null) {
+            return restTemplate.postForEntity(baseURL + "/api/widgetType", widgetTypeDetails, WidgetTypeDetails.class).getBody();
+        }
+        return restTemplate.postForEntity(baseURL + "/api/widgetType?updateExistingByFqn={updateExistingByFqn}", widgetTypeDetails, WidgetTypeDetails.class, updateExistingByFqn).getBody();
     }
 
     public void deleteWidgetType(WidgetTypeId widgetTypeId) {
         restTemplate.delete(baseURL + "/api/widgetType/{widgetTypeId}", widgetTypeId.getId());
     }
 
+    public PageData<WidgetTypeInfo> getWidgetTypes(PageLink pageLink) {
+        return getWidgetTypes(pageLink, null, null, null, null);
+    }
+
+    public PageData<WidgetTypeInfo> getWidgetTypes(PageLink pageLink, Boolean tenantOnly, Boolean fullSearch,
+                                                   DeprecatedFilter deprecatedFilter, List<String> widgetTypeList) {
+        Map<String, String> params = new HashMap<>();
+        addPageLinkToParam(params, pageLink);
+        addWidgetInfoFiltersToParams(tenantOnly, fullSearch, deprecatedFilter, widgetTypeList, params);
+        return restTemplate.exchange(
+                baseURL + "/api/widgetTypes?" + getUrlParams(pageLink) +
+                        getWidgetTypeInfoPageRequestUrlParams(tenantOnly, fullSearch, deprecatedFilter, widgetTypeList),
+                HttpMethod.GET,
+                HttpEntity.EMPTY,
+                new ParameterizedTypeReference<PageData<WidgetTypeInfo>>() {
+                },
+                params).getBody();
+    }
+
+    @Deprecated // current name in the controller: getBundleWidgetTypesByBundleAlias
     public List<WidgetType> getBundleWidgetTypes(boolean isSystem, String bundleAlias) {
         return restTemplate.exchange(
                 baseURL + "/api/widgetTypes?isSystem={isSystem}&bundleAlias={bundleAlias}",
@@ -2639,6 +3221,17 @@ public class RestClient implements ClientHttpRequestInterceptor, Closeable {
                 bundleAlias).getBody();
     }
 
+    public List<WidgetType> getBundleWidgetTypes(WidgetsBundleId widgetsBundleId) {
+        return restTemplate.exchange(
+                baseURL + "/api/widgetTypes?widgetsBundleId={widgetsBundleId}",
+                HttpMethod.GET,
+                HttpEntity.EMPTY,
+                new ParameterizedTypeReference<List<WidgetType>>() {
+                },
+                widgetsBundleId.getId()).getBody();
+    }
+
+    @Deprecated // current name in the controller: getBundleWidgetTypesDetailsByBundleAlias
     public List<WidgetTypeDetails> getBundleWidgetTypesDetails(boolean isSystem, String bundleAlias) {
         return restTemplate.exchange(
                 baseURL + "/api/widgetTypesDetails?isSystem={isSystem}&bundleAlias={bundleAlias}",
@@ -2650,6 +3243,28 @@ public class RestClient implements ClientHttpRequestInterceptor, Closeable {
                 bundleAlias).getBody();
     }
 
+    public List<WidgetTypeDetails> getBundleWidgetTypesDetails(WidgetsBundleId widgetsBundleId, boolean inlineImages) {
+        return restTemplate.exchange(
+                baseURL + "/api/widgetTypesDetails?widgetsBundleId={widgetsBundleId}&inlineImages={inlineImages}",
+                HttpMethod.GET,
+                HttpEntity.EMPTY,
+                new ParameterizedTypeReference<List<WidgetTypeDetails>>() {
+                },
+                widgetsBundleId.getId(),
+                inlineImages).getBody();
+    }
+
+    public List<String> getBundleWidgetTypeFqns(WidgetsBundleId widgetsBundleId) {
+        return restTemplate.exchange(
+                baseURL + "/api/widgetTypeFqns?widgetsBundleId={widgetsBundleId}",
+                HttpMethod.GET,
+                HttpEntity.EMPTY,
+                new ParameterizedTypeReference<List<String>>() {
+                },
+                widgetsBundleId.getId()).getBody();
+    }
+
+    @Deprecated // current name in the controller: getBundleWidgetTypesInfosByBundleAlias
     public List<WidgetTypeInfo> getBundleWidgetTypesInfos(boolean isSystem, String bundleAlias) {
         return restTemplate.exchange(
                 baseURL + "/api/widgetTypesInfos?isSystem={isSystem}&bundleAlias={bundleAlias}",
@@ -2661,6 +3276,28 @@ public class RestClient implements ClientHttpRequestInterceptor, Closeable {
                 bundleAlias).getBody();
     }
 
+    public PageData<WidgetTypeInfo> getBundleWidgetTypesInfos(WidgetsBundleId widgetsBundleId, PageLink pageLink) {
+        return getBundleWidgetTypesInfos(widgetsBundleId, pageLink, null, null, null, null);
+    }
+
+    public PageData<WidgetTypeInfo> getBundleWidgetTypesInfos(WidgetsBundleId widgetsBundleId, PageLink pageLink,
+                                                              Boolean tenantOnly, Boolean fullSearch,
+                                                              DeprecatedFilter deprecatedFilter, List<String> widgetTypeList) {
+        Map<String, String> params = new HashMap<>();
+        params.put("widgetsBundleId", widgetsBundleId.getId().toString());
+        addPageLinkToParam(params, pageLink);
+        addWidgetInfoFiltersToParams(tenantOnly, fullSearch, deprecatedFilter, widgetTypeList, params);
+        return restTemplate.exchange(
+                baseURL + "/api/widgetTypesInfos?widgetsBundleId={widgetsBundleId}&" + getUrlParams(pageLink) +
+                        getWidgetTypeInfoPageRequestUrlParams(tenantOnly, fullSearch, deprecatedFilter, widgetTypeList),
+                HttpMethod.GET,
+                HttpEntity.EMPTY,
+                new ParameterizedTypeReference<PageData<WidgetTypeInfo>>() {
+                },
+                params).getBody();
+    }
+
+    @Deprecated // current name in the controller: getWidgetTypeByBundleAliasAndTypeAlias
     public Optional<WidgetType> getWidgetType(boolean isSystem, String bundleAlias, String alias) {
         try {
             ResponseEntity<WidgetType> widgetType =
@@ -2677,6 +3314,22 @@ public class RestClient implements ClientHttpRequestInterceptor, Closeable {
             } else {
                 throw exception;
             }
+        }
+    }
+
+    public Optional<WidgetType> getWidgetType(String fqn) {
+        try {
+            ResponseEntity<WidgetType> widgetType =
+                    restTemplate.getForEntity(
+                            baseURL + "/api/widgetType?fqn={fqn}",
+                            WidgetType.class,
+                            fqn);
+            return Optional.ofNullable(widgetType.getBody());
+        } catch (HttpClientErrorException exception) {
+            if (exception.getStatusCode() == HttpStatus.NOT_FOUND) {
+                return Optional.empty();
+            }
+            throw exception;
         }
     }
 
@@ -3130,6 +3783,18 @@ public class RestClient implements ClientHttpRequestInterceptor, Closeable {
                 }).getBody();
     }
 
+    public Optional<EdgeInstructions> getEdgeInstallInstructions(EdgeId edgeId, String method) {
+        ResponseEntity<EdgeInstructions> edgeInstallInstructionsResult =
+                restTemplate.getForEntity(baseURL + "/api/edge/instructions/install/{edgeId}/{method}", EdgeInstructions.class, edgeId.getId(), method);
+        return Optional.ofNullable(edgeInstallInstructionsResult.getBody());
+    }
+
+    public Optional<EdgeInstructions> getEdgeUpgradeInstructions(String edgeVersion, String method) {
+        ResponseEntity<EdgeInstructions> edgeUpgradeInstructionsResult =
+                restTemplate.getForEntity(baseURL + "/api/edge/instructions/upgrade/{edgeVersion}/{method}", EdgeInstructions.class, edgeVersion, method);
+        return Optional.ofNullable(edgeUpgradeInstructionsResult.getBody());
+    }
+
     public UUID saveEntitiesVersion(VersionCreateRequest request) {
         return restTemplate.postForEntity(baseURL + "/api/entities/vc/version", request, UUID.class).getBody();
     }
@@ -3146,6 +3811,7 @@ public class RestClient implements ClientHttpRequestInterceptor, Closeable {
             }
         }
     }
+
     public PageData<EntityVersion> listEntityVersions(EntityId externalEntityId, String branch, PageLink pageLink) {
         Map<String, String> params = new HashMap<>();
         params.put("entityType", externalEntityId.getEntityType().name());
@@ -3316,6 +3982,106 @@ public class RestClient implements ClientHttpRequestInterceptor, Closeable {
         restTemplate.delete("/api/resource/{resourceId}", resourceId.getId().toString());
     }
 
+    public TbResourceInfo getImageInfo(String type, String key) {
+        return restTemplate.getForObject(baseURL + "/api/images/{type}/{key}/info", TbResourceInfo.class, Map.of(
+                "type", type,
+                "key", key
+        ));
+    }
+
+    public PageData<TbResourceInfo> getImages(PageLink pageLink, boolean includeSystemImages) {
+        return this.getImages(pageLink, null, includeSystemImages);
+    }
+
+    public PageData<TbResourceInfo> getImages(PageLink pageLink, ResourceSubType imageSubType, boolean includeSystemImages) {
+        Map<String, String> params = new HashMap<>();
+        var url = baseURL + "/api/images?includeSystemImages={includeSystemImages}&";
+        addPageLinkToParam(params, pageLink);
+        params.put("includeSystemImages", String.valueOf(includeSystemImages));
+        if (imageSubType != null) {
+            url += "imageSubType={imageSubType}&";
+            params.put("imageSubType", imageSubType.name());
+        }
+        return restTemplate.exchange(url + getUrlParams(pageLink),
+                HttpMethod.GET,
+                HttpEntity.EMPTY,
+                new ParameterizedTypeReference<PageData<TbResourceInfo>>() {},
+                params
+        ).getBody();
+    }
+
+    public TbResourceInfo uploadImage(String fileName, byte[] data, String contentType, String title) {
+        HttpEntity<MultiValueMap<String, Object>> request = createMultipartRequest(fileName, data, contentType, Map.of(
+                "title", Strings.nullToEmpty(title)
+        ));
+        return restTemplate.postForObject(baseURL + "/api/image", request, TbResourceInfo.class);
+    }
+
+    public TbResourceInfo updateImage(String type, String key, String fileName, byte[] data, String contentType) {
+        HttpEntity<MultiValueMap<String, Object>> request = createMultipartRequest(fileName, data, contentType, Map.of());
+        return restTemplate.exchange(baseURL + "/api/images/{type}/{key}", HttpMethod.PUT, request, TbResourceInfo.class, Map.of(
+                "type", type,
+                "key", key
+        )).getBody();
+    }
+
+    public TbResourceInfo updateImageInfo(String type, String key, TbResourceInfo request) {
+        return restTemplate.exchange(baseURL + "/api/images/{type}/{key}/info", HttpMethod.PUT, new HttpEntity<>(request), TbResourceInfo.class, Map.of(
+                "type", type,
+                "key", key
+        )).getBody();
+    }
+
+    public void updateImagePublicStatus(String type, String key, boolean isPublic) {
+        restTemplate.put(baseURL + "/api/images/{type}/{key}/public/{isPublic}", null, Map.of(
+                "type", type,
+                "key", key,
+                "isPublic", isPublic
+        ));
+    }
+
+    public byte[] downloadImage(String type, String key) throws IOException {
+        Resource image = restTemplate.exchange(baseURL + "/api/images/{type}/{key}", HttpMethod.GET, null, Resource.class, Map.of(
+                "type", type,
+                "key", key
+        )).getBody();
+        return IOUtils.toByteArray(image.getInputStream());
+    }
+
+    public byte[] downloadImagePreview(String type, String key) throws IOException {
+        Resource image = restTemplate.exchange(baseURL + "/api/images/{type}/{key}/preview", HttpMethod.GET, null, Resource.class, Map.of(
+                "type", type,
+                "key", key
+        )).getBody();
+        return IOUtils.toByteArray(image.getInputStream());
+    }
+
+    public byte[] downloadPublicImage(String publicResourceKey) throws IOException {
+        Resource image = restTemplate.exchange(baseURL + "/api/images/public/{publicResourceKey}", HttpMethod.GET, null, Resource.class, Map.of(
+                "publicResourceKey", publicResourceKey
+        )).getBody();
+        return IOUtils.toByteArray(image.getInputStream());
+    }
+
+    public ResourceExportData exportImage(String type, String key) {
+        return restTemplate.getForObject(baseURL + "/api/images/{type}/{key}/export", ResourceExportData.class, Map.of(
+                "type", type,
+                "key", key
+        ));
+    }
+
+    public TbResourceInfo importImage(ResourceExportData exportData) {
+        return restTemplate.exchange(baseURL + "/api/image/import", HttpMethod.PUT, new HttpEntity<>(exportData), TbResourceInfo.class).getBody();
+    }
+
+    public TbImageDeleteResult deleteImage(String type, String key, boolean force) {
+        return restTemplate.exchange(baseURL + "/api/images/{type}/{key}?force={force}", HttpMethod.DELETE, null, TbImageDeleteResult.class, Map.of(
+                "type", type,
+                "key", key,
+                "force", force
+        )).getBody();
+    }
+
     public ResponseEntity<Resource> downloadOtaPackage(OtaPackageId otaPackageId) {
         Map<String, String> params = new HashMap<>();
         params.put("otaPackageId", otaPackageId.getId().toString());
@@ -3365,16 +4131,7 @@ public class RestClient implements ClientHttpRequestInterceptor, Closeable {
     }
 
     public OtaPackageInfo saveOtaPackageData(OtaPackageId otaPackageId, String checkSum, ChecksumAlgorithm checksumAlgorithm, String fileName, byte[] fileBytes) throws Exception {
-        HttpHeaders header = new HttpHeaders();
-        header.setContentType(MediaType.MULTIPART_FORM_DATA);
-
-        MultiValueMap<String, String> fileMap = new LinkedMultiValueMap<>();
-        fileMap.add(HttpHeaders.CONTENT_DISPOSITION, "form-data; name=file; filename=" + fileName);
-        HttpEntity<ByteArrayResource> fileEntity = new HttpEntity<>(new ByteArrayResource(fileBytes), fileMap);
-
-        MultiValueMap<String, Object> body = new LinkedMultiValueMap<>();
-        body.add("file", fileEntity);
-        HttpEntity<MultiValueMap<String, Object>> requestEntity = new HttpEntity<>(body, header);
+        HttpEntity<MultiValueMap<String, Object>> requestEntity = createMultipartRequest(fileName, fileBytes, null, Collections.emptyMap());
 
         Map<String, String> params = new HashMap<>();
         params.put("otaPackageId", otaPackageId.getId().toString());
@@ -3479,6 +4236,285 @@ public class RestClient implements ClientHttpRequestInterceptor, Closeable {
         }
     }
 
+    public JsonNode handleRuleEngineRequest(JsonNode requestBody) {
+        return restTemplate.exchange(
+                baseURL + "/api/rule-engine",
+                HttpMethod.POST,
+                new HttpEntity<>(requestBody),
+                new ParameterizedTypeReference<JsonNode>() {
+                }).getBody();
+    }
+
+    public JsonNode handleRuleEngineRequest(EntityId entityId, JsonNode requestBody) {
+        return restTemplate.exchange(
+                baseURL + "/api/rule-engine/{entityType}/{entityId}",
+                HttpMethod.POST,
+                new HttpEntity<>(requestBody),
+                new ParameterizedTypeReference<JsonNode>() {
+                },
+                entityId.getEntityType(),
+                entityId.getId()).getBody();
+    }
+
+    public JsonNode handleRuleEngineRequest(EntityId entityId, int timeout, JsonNode requestBody) {
+        return restTemplate.exchange(
+                baseURL + "/api/rule-engine/{entityType}/{entityId}/{timeout}",
+                HttpMethod.POST,
+                new HttpEntity<>(requestBody),
+                new ParameterizedTypeReference<JsonNode>() {
+                },
+                entityId.getEntityType(),
+                entityId.getId(),
+                timeout).getBody();
+    }
+
+    public JsonNode handleRuleEngineRequest(EntityId entityId, String queueName, int timeout, JsonNode requestBody) {
+        return restTemplate.exchange(
+                baseURL + "/api/rule-engine/{entityType}/{entityId}/{queueName}/{timeout}",
+                HttpMethod.POST,
+                new HttpEntity<>(requestBody),
+                new ParameterizedTypeReference<JsonNode>() {
+                },
+                entityId.getEntityType(),
+                entityId.getId(),
+                queueName,
+                timeout).getBody();
+    }
+
+    public CalculatedField saveCalculatedField(CalculatedField calculatedField) {
+        return restTemplate.postForEntity(baseURL + "/api/calculatedField", calculatedField, CalculatedField.class).getBody();
+    }
+
+    public Optional<CalculatedField> getCalculatedFieldById(CalculatedFieldId calculatedFieldId) {
+        try {
+            ResponseEntity<CalculatedField> calculatedField = restTemplate.getForEntity(baseURL + "/api/calculatedField/{calculatedFieldId}", CalculatedField.class, calculatedFieldId.getId());
+            return Optional.ofNullable(calculatedField.getBody());
+        } catch (HttpClientErrorException exception) {
+            if (exception.getStatusCode() == HttpStatus.NOT_FOUND) {
+                return Optional.empty();
+            } else {
+                throw exception;
+            }
+        }
+    }
+
+    public PageData<CalculatedField> getCalculatedFieldsByEntityId(EntityId entityId, PageLink pageLink) {
+        Map<String, String> params = new HashMap<>();
+        addPageLinkToParam(params, pageLink);
+        return restTemplate.exchange(
+                baseURL + "/api/" + entityId.getEntityType() + "/" + entityId.getId() + "/calculatedFields?" + getUrlParams(pageLink),
+                HttpMethod.GET, HttpEntity.EMPTY,
+                new ParameterizedTypeReference<PageData<CalculatedField>>() {
+                }, params).getBody();
+
+    }
+
+    public void deleteCalculatedField(CalculatedFieldId calculatedFieldId) {
+        restTemplate.delete(baseURL + "/api/calculatedField/{calculatedFieldId}", calculatedFieldId.getId());
+    }
+
+    public Optional<JsonNode> getLatestCalculatedFieldDebugEvent(CalculatedFieldId calculatedFieldId) {
+        try {
+            ResponseEntity<JsonNode> jsonNode = restTemplate.getForEntity(baseURL + "/api/calculatedField/{calculatedFieldId}/debug", JsonNode.class, calculatedFieldId.getId());
+            return Optional.ofNullable(jsonNode.getBody());
+        } catch (HttpClientErrorException exception) {
+            if (exception.getStatusCode() == HttpStatus.NOT_FOUND) {
+                return Optional.empty();
+            } else {
+                throw exception;
+            }
+        }
+    }
+
+    public Optional<JsonNode> testCalculatedFieldScript(JsonNode inputParams) {
+        try {
+            ResponseEntity<JsonNode> jsonNode = restTemplate.postForEntity(baseURL + "/api/calculatedField/testScript", inputParams, JsonNode.class);
+            return Optional.ofNullable(jsonNode.getBody());
+        } catch (HttpClientErrorException exception) {
+            if (exception.getStatusCode() == HttpStatus.NOT_FOUND) {
+                return Optional.empty();
+            } else {
+                throw exception;
+            }
+        }
+    }
+
+    public PageData<Notification> getNotifications(Boolean unreadOnly, NotificationDeliveryMethod deliveryMethod, PageLink pageLink) {
+        Map<String, String> params = new HashMap<>();
+
+        StringBuilder urlBuilder = new StringBuilder();
+        urlBuilder.append(baseURL).append("/api/notifications?").append(getUrlParams(pageLink));
+        addPageLinkToParam(params, pageLink);
+
+        if (unreadOnly != null) {
+            urlBuilder.append("&unreadOnly={unreadOnly}");
+            params.put("unreadOnly", unreadOnly.toString());
+        }
+        if (deliveryMethod != null) {
+            urlBuilder.append("&deliveryMethod={deliveryMethod}");
+            params.put("deliveryMethod", deliveryMethod.name());
+        }
+
+        return restTemplate.exchange(urlBuilder.toString(),
+                HttpMethod.GET,
+                HttpEntity.EMPTY,
+                new ParameterizedTypeReference<PageData<Notification>>() {
+                }, params).getBody();
+    }
+
+    public Integer getUnreadNotificationsCount(NotificationDeliveryMethod deliveryMethod) {
+        String uri = "/api/notifications/unread/count?";
+        Map<String, String> params = new HashMap<>();
+        if (deliveryMethod != null) {
+            params.put("deliveryMethod", deliveryMethod.name());
+            uri += "&deliveryMethod={deliveryMethod}";
+        }
+        return restTemplate.exchange(
+                baseURL + uri,
+                HttpMethod.GET,
+                HttpEntity.EMPTY,
+                Integer.class, params).getBody();
+    }
+
+    public void markNotificationAsRead(NotificationId notificationId) {
+        restTemplate.exchange(
+                baseURL + "/api/notification/{id}/read",
+                HttpMethod.PUT,
+                HttpEntity.EMPTY,
+                Void.class,
+                notificationId.getId());
+    }
+
+    public void markAllNotificationsAsRead(NotificationDeliveryMethod deliveryMethod) {
+        String uri = "/api/notifications/read?";
+        Map<String, String> params = new HashMap<>();
+        if (deliveryMethod != null) {
+            params.put("deliveryMethod", deliveryMethod.name());
+            uri += "&deliveryMethod={deliveryMethod}";
+        }
+        restTemplate.exchange(
+                baseURL + uri,
+                HttpMethod.PUT,
+                HttpEntity.EMPTY,
+                Void.class,
+                params);
+    }
+
+
+    public void deleteNotification(NotificationId notificationId) {
+        restTemplate.delete(baseURL + "/api/notification/{id}", notificationId.getId());
+    }
+
+    public NotificationRequest saveNotificationRequest(NotificationRequest notificationRequest) {
+        return restTemplate.postForEntity(baseURL + "/api/notification/request", notificationRequest, NotificationRequest.class).getBody();
+    }
+
+    public NotificationRequestPreview getNotificationRequestPreview(NotificationRequest notificationRequest, int recipientsPreviewSize) {
+        return restTemplate.postForEntity(baseURL + "/api/notification/request/preview?recipientsPreviewSize={recipientsPreviewSize}", notificationRequest, NotificationRequestPreview.class, recipientsPreviewSize).getBody();
+    }
+
+    public Optional<NotificationRequestInfo> getNotificationRequestById(NotificationRequestId notificationRequestId) {
+        try {
+            ResponseEntity<NotificationRequestInfo> notificationRequest = restTemplate.getForEntity(baseURL + "/api/notification/request/{id}", NotificationRequestInfo.class, notificationRequestId.getId());
+            return Optional.ofNullable(notificationRequest.getBody());
+        } catch (HttpClientErrorException exception) {
+            if (exception.getStatusCode() == HttpStatus.NOT_FOUND) {
+                return Optional.empty();
+            } else {
+                throw exception;
+            }
+        }
+    }
+
+    public PageData<NotificationRequestInfo> getNotificationRequests(PageLink pageLink) {
+        Map<String, String> params = new HashMap<>();
+        addPageLinkToParam(params, pageLink);
+        return restTemplate.exchange(
+                baseURL + "/api/notification/requests?" + getUrlParams(pageLink),
+                HttpMethod.GET,
+                HttpEntity.EMPTY,
+                new ParameterizedTypeReference<PageData<NotificationRequestInfo>>() {
+                }, params).getBody();
+    }
+
+    public void deleteNotificationRequest(NotificationRequestId notificationRequestId) {
+        restTemplate.delete(baseURL + "/api/notification/request/{id}", notificationRequestId.getId());
+    }
+
+    public NotificationSettings saveNotificationSettings(NotificationSettings notificationSettings) {
+        return restTemplate.postForEntity(baseURL + "/api/notification/settings", notificationSettings, NotificationSettings.class).getBody();
+    }
+
+    public Optional<NotificationSettings> getNotificationSettings() {
+        try {
+            ResponseEntity<NotificationSettings> notificationSettings = restTemplate.getForEntity(baseURL + "/api/notification/settings", NotificationSettings.class);
+            return Optional.ofNullable(notificationSettings.getBody());
+        } catch (HttpClientErrorException exception) {
+            if (exception.getStatusCode() == HttpStatus.NOT_FOUND) {
+                return Optional.empty();
+            } else {
+                throw exception;
+            }
+        }
+    }
+
+    public List<NotificationDeliveryMethod> getAvailableDeliveryMethods() {
+        return restTemplate.exchange(URI.create(
+                        baseURL + "/api/notification/deliveryMethods"),
+                HttpMethod.GET,
+                HttpEntity.EMPTY,
+                new ParameterizedTypeReference<List<NotificationDeliveryMethod>>() {
+                }).getBody();
+    }
+
+    public UserNotificationSettings saveUserNotificationSettings(UserNotificationSettings userNotificationSettings) {
+        return restTemplate.postForEntity(baseURL + "/api/notification/settings/user", userNotificationSettings, UserNotificationSettings.class).getBody();
+    }
+
+    public Optional<UserNotificationSettings> getUserNotificationSettings() {
+        try {
+            ResponseEntity<UserNotificationSettings> userNotificationSettings = restTemplate.getForEntity(baseURL + "/api/notification/settings/user", UserNotificationSettings.class);
+            return Optional.ofNullable(userNotificationSettings.getBody());
+        } catch (HttpClientErrorException exception) {
+            if (exception.getStatusCode() == HttpStatus.NOT_FOUND) {
+                return Optional.empty();
+            } else {
+                throw exception;
+            }
+        }
+    }
+
+    public NotificationTarget saveNotificationTarget(NotificationTarget notificationTarget) {
+        return restTemplate.postForEntity(baseURL + "/api/notification/target", notificationTarget, NotificationTarget.class).getBody();
+    }
+
+    public NotificationTemplate saveNotificationTemplate(NotificationTemplate notificationTemplate) {
+        return restTemplate.postForEntity(baseURL + "/api/notification/template", notificationTemplate, NotificationTemplate.class).getBody();
+    }
+
+    public AiModel saveAiModel(AiModel aiModel) {
+        return restTemplate.postForEntity(baseURL + "/api/ai/model", aiModel, AiModel.class).getBody();
+    }
+
+    public Optional<AiModel> getAiModel(AiModelId aiModelId) {
+        try {
+            ResponseEntity<AiModel> response = restTemplate.getForEntity(
+                    baseURL + "/api/ai/model/{aiModelId}", AiModel.class, aiModelId.getId());
+            return Optional.ofNullable(response.getBody());
+        } catch (HttpClientErrorException exception) {
+            if (exception.getStatusCode() == HttpStatus.NOT_FOUND) {
+                return Optional.empty();
+            } else {
+                throw exception;
+            }
+        }
+    }
+
+    public void deleteAiModel(AiModelId aiModelId) {
+        restTemplate.delete(baseURL + "/api/ai/model/{aiModelId}", aiModelId.getId());
+    }
+
+
     private String getTimeUrlParams(TimePageLink pageLink) {
         String urlParams = getUrlParams(pageLink);
         if (pageLink.getStartTime() != null) {
@@ -3497,6 +4533,30 @@ public class RestClient implements ClientHttpRequestInterceptor, Closeable {
         }
         if (pageLink.getSortOrder() != null) {
             urlParams += "&sortProperty={sortProperty}&sortOrder={sortOrder}";
+        }
+        return urlParams;
+    }
+
+    private String getWidgetTypeInfoPageRequestUrlParams(Boolean tenantOnly, Boolean fullSearch,
+                                                         DeprecatedFilter deprecatedFilter,
+                                                         List<String> widgetTypeList) {
+        String urlParams = getTenantOnlyAndFullSearchUrlParams(tenantOnly, fullSearch);
+        if (deprecatedFilter != null) {
+            urlParams += "&deprecatedFilter={deprecatedFilter}";
+        }
+        if (!CollectionUtils.isEmpty(widgetTypeList)) {
+            urlParams += "&widgetTypeList={widgetTypeList}";
+        }
+        return urlParams;
+    }
+
+    private String getTenantOnlyAndFullSearchUrlParams(Boolean tenantOnly, Boolean fullSearch) {
+        String urlParams = "";
+        if (tenantOnly != null) {
+            urlParams = "&tenantOnly={tenantOnly}";
+        }
+        if (fullSearch != null) {
+            urlParams += "&fullSearch={fullSearch}";
         }
         return urlParams;
     }
@@ -3523,6 +4583,26 @@ public class RestClient implements ClientHttpRequestInterceptor, Closeable {
         }
     }
 
+    private void addWidgetInfoFiltersToParams(Boolean tenantOnly, Boolean fullSearch, DeprecatedFilter deprecatedFilter,
+                                              List<String> widgetTypeList, Map<String, String> params) {
+        addTenantOnlyAndFullSearchToParams(tenantOnly, fullSearch, params);
+        if (deprecatedFilter != null) {
+            params.put("deprecatedFilter", deprecatedFilter.name());
+        }
+        if (!CollectionUtils.isEmpty(widgetTypeList)) {
+            params.put("widgetTypeList", listToString(widgetTypeList));
+        }
+    }
+
+    private void addTenantOnlyAndFullSearchToParams(Boolean tenantOnly, Boolean fullSearch, Map<String, String> params) {
+        if (tenantOnly != null) {
+            params.put("tenantOnly", tenantOnly.toString());
+        }
+        if (fullSearch != null) {
+            params.put("fullSearch", fullSearch.toString());
+        }
+    }
+
     private String listToString(List<String> list) {
         return String.join(",", list);
     }
@@ -3535,11 +4615,33 @@ public class RestClient implements ClientHttpRequestInterceptor, Closeable {
         return listToString(list.stream().map(Enum::name).collect(Collectors.toList()));
     }
 
+    private HttpEntity<MultiValueMap<String, Object>> createMultipartRequest(String fileName, byte[] fileData, String fileContentType, Map<String, Object> otherParts) {
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.MULTIPART_FORM_DATA);
+
+        MultiValueMap<String, String> fileMap = new LinkedMultiValueMap<>();
+        fileMap.add(HttpHeaders.CONTENT_DISPOSITION, "form-data; name=file; filename=" + fileName);
+        if (fileContentType != null) {
+            fileMap.add(HttpHeaders.CONTENT_TYPE, fileContentType);
+        }
+        HttpEntity<ByteArrayResource> fileEntity = new HttpEntity<>(new ByteArrayResource(fileData), fileMap);
+
+        MultiValueMap<String, Object> body = new LinkedMultiValueMap<>();
+        body.setAll(otherParts);
+        body.add("file", fileEntity);
+        return new HttpEntity<>(body, headers);
+    }
+
     @Override
     public void close() {
-        if (service != null) {
-            service.shutdown();
+        if (executor.isInitialized()) {
+            getExecutor().shutdown();
         }
+    }
+
+    @SneakyThrows
+    private ExecutorService getExecutor() {
+        return executor.get();
     }
 
 }

@@ -1,5 +1,5 @@
 /**
- * Copyright © 2016-2023 The Thingsboard Authors
+ * Copyright © 2016-2025 The Thingsboard Authors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,9 +16,11 @@
 package org.thingsboard.server.msa.ui.tests.deviceProfileSmoke;
 
 import io.qameta.allure.Description;
+import io.qameta.allure.Epic;
+import io.qameta.allure.Feature;
 import org.testng.Assert;
 import org.testng.annotations.AfterMethod;
-import org.testng.annotations.BeforeMethod;
+import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 import org.thingsboard.server.msa.ui.base.AbstractDriverBaseTest;
 import org.thingsboard.server.msa.ui.pages.LoginPageHelper;
@@ -29,7 +31,7 @@ public class MakeDeviceProfileDefaultTest extends AbstractDriverBaseTest {
     private SideBarMenuViewHelper sideBarMenuView;
     private ProfilesPageHelper profilesPage;
 
-    @BeforeMethod
+    @BeforeClass
     public void login() {
         new LoginPageHelper(driver).authorizationTenant();
         sideBarMenuView = new SideBarMenuViewHelper(driver);
@@ -41,8 +43,10 @@ public class MakeDeviceProfileDefaultTest extends AbstractDriverBaseTest {
         testRestClient.setDefaultDeviceProfile(getDeviceProfileByName("default").getId());
     }
 
+    @Epic("Device profile smoke tests")
+    @Feature("Make device profile default")
     @Test(priority = 10, groups = "smoke")
-    @Description
+    @Description("Make device profile default by clicking on the 'Make device profile default'  icon in the right corner")
     public void makeDeviceProfileDefaultByRightCornerBtn() {
         sideBarMenuView.openDeviceProfiles();
         profilesPage.setProfileName();
@@ -53,8 +57,10 @@ public class MakeDeviceProfileDefaultTest extends AbstractDriverBaseTest {
         Assert.assertTrue(profilesPage.defaultCheckbox(profile).isDisplayed());
     }
 
+    @Epic("Device profile smoke tests")
+    @Feature("Make device profile default")
     @Test(priority = 10, groups = "smoke")
-    @Description
+    @Description("Make device profile default by clicking on the 'Make device profile default' button in the entity view")
     public void makeDeviceProfileDefaultFromView() {
         sideBarMenuView.openDeviceProfiles();
         profilesPage.setProfileName();

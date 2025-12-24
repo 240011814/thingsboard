@@ -1,5 +1,5 @@
 ///
-/// Copyright © 2016-2023 The Thingsboard Authors
+/// Copyright © 2016-2025 The Thingsboard Authors
 ///
 /// Licensed under the Apache License, Version 2.0 (the "License");
 /// you may not use this file except in compliance with the License.
@@ -19,31 +19,29 @@ import { AuthService } from '@core/auth/auth.service';
 import { Store } from '@ngrx/store';
 import { AppState } from '@core/core.state';
 import { PageComponent } from '@shared/components/page.component';
-import { FormBuilder, Validators } from '@angular/forms';
+import { UntypedFormBuilder, Validators } from '@angular/forms';
 import { ActionNotificationShow } from '@core/notification/notification.actions';
 import { TranslateService } from '@ngx-translate/core';
+import { validateEmail } from '@app/core/utils';
 
 @Component({
   selector: 'tb-reset-password-request',
   templateUrl: './reset-password-request.component.html',
-  styleUrls: ['./reset-password-request.component.scss']
+  styleUrls: ['./password.component.scss']
 })
-export class ResetPasswordRequestComponent extends PageComponent implements OnInit {
+export class ResetPasswordRequestComponent extends PageComponent {
 
   clicked: boolean = false;
 
   requestPasswordRequest = this.fb.group({
-    email: ['', [Validators.email, Validators.required]]
+    email: ['', [Validators.required, validateEmail]],
   }, {updateOn: 'submit'});
 
   constructor(protected store: Store<AppState>,
               private authService: AuthService,
               private translate: TranslateService,
-              public fb: FormBuilder) {
+              public fb: UntypedFormBuilder) {
     super(store);
-  }
-
-  ngOnInit() {
   }
 
   disableInputs() {

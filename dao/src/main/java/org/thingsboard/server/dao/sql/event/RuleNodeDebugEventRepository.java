@@ -1,5 +1,5 @@
 /**
- * Copyright © 2016-2023 The Thingsboard Authors
+ * Copyright © 2016-2025 The Thingsboard Authors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,13 +22,11 @@ import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.transaction.annotation.Transactional;
-import org.thingsboard.server.common.data.event.ErrorEvent;
 import org.thingsboard.server.common.data.event.RuleNodeDebugEvent;
-import org.thingsboard.server.dao.model.sql.ErrorEventEntity;
 import org.thingsboard.server.dao.model.sql.RuleNodeDebugEventEntity;
-import org.thingsboard.server.dao.model.sql.StatisticsEventEntity;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 
@@ -37,6 +35,9 @@ public interface RuleNodeDebugEventRepository extends EventRepository<RuleNodeDe
     @Override
     @Query(nativeQuery = true,  value = "SELECT * FROM rule_node_debug_event e WHERE e.tenant_id = :tenantId AND e.entity_id = :entityId ORDER BY e.ts DESC LIMIT :limit")
     List<RuleNodeDebugEventEntity> findLatestEvents(@Param("tenantId") UUID tenantId, @Param("entityId") UUID entityId, @Param("limit") int limit);
+
+    @Query(nativeQuery = true,  value = "SELECT * FROM rule_node_debug_event e WHERE e.tenant_id = :tenantId AND e.entity_id = :entityId AND e.e_type = 'IN' ORDER BY e.ts DESC LIMIT 1")
+    Optional<RuleNodeDebugEventEntity> findLatestDebugRuleNodeInEvent(@Param("tenantId") UUID tenantId, @Param("entityId") UUID entityId);
 
     @Override
     @Query("SELECT e FROM RuleNodeDebugEventEntity e WHERE " +

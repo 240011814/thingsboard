@@ -1,5 +1,5 @@
 ///
-/// Copyright © 2016-2023 The Thingsboard Authors
+/// Copyright © 2016-2025 The Thingsboard Authors
 ///
 /// Licensed under the Apache License, Version 2.0 (the "License");
 /// you may not use this file except in compliance with the License.
@@ -14,12 +14,12 @@
 /// limitations under the License.
 ///
 
-import { Component, EventEmitter, forwardRef, Input, OnInit, Output } from '@angular/core';
+import { Component, DestroyRef, EventEmitter, forwardRef, Input, OnInit, Output } from '@angular/core';
 import {
   AbstractControl,
   ControlValueAccessor,
-  FormBuilder,
-  FormGroup,
+  UntypedFormBuilder,
+  UntypedFormGroup,
   NG_VALUE_ACCESSOR, ValidationErrors,
   Validators
 } from '@angular/forms';
@@ -28,6 +28,7 @@ import { Store } from '@ngrx/store';
 import { AppState } from '@core/core.state';
 import { TranslateService } from '@ngx-translate/core';
 import { DataKeyType } from '@shared/models/telemetry/telemetry.models';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 
 export interface LabelDataKey {
   name: string;
@@ -47,7 +48,7 @@ export function labelDataKeyValidator(control: AbstractControl): ValidationError
 @Component({
   selector: 'tb-label-data-key',
   templateUrl: './label-data-key.component.html',
-  styleUrls: ['./label-data-key.component.scss', './../widget-settings.scss'],
+  styleUrls: ['./label-data-key.component.scss'],
   providers: [
     {
       provide: NG_VALUE_ACCESSOR,
@@ -71,11 +72,12 @@ export class LabelDataKeyComponent extends PageComponent implements OnInit, Cont
 
   private propagateChange = null;
 
-  public labelDataKeyFormGroup: FormGroup;
+  public labelDataKeyFormGroup: UntypedFormGroup;
 
   constructor(protected store: Store<AppState>,
               private translate: TranslateService,
-              private fb: FormBuilder) {
+              private fb: UntypedFormBuilder,
+              private destroyRef: DestroyRef) {
     super(store);
   }
 
@@ -84,7 +86,9 @@ export class LabelDataKeyComponent extends PageComponent implements OnInit, Cont
       name: [null, [Validators.required]],
       type: [DataKeyType.attribute, [Validators.required]]
     });
-    this.labelDataKeyFormGroup.valueChanges.subscribe(() => {
+    this.labelDataKeyFormGroup.valueChanges.pipe(
+      takeUntilDestroyed(this.destroyRef)
+    ).subscribe(() => {
       this.updateModel();
     });
   }

@@ -1,5 +1,5 @@
 --
--- Copyright © 2016-2023 The Thingsboard Authors
+-- Copyright © 2016-2025 The Thingsboard Authors
 --
 -- Licensed under the Apache License, Version 2.0 (the "License");
 -- you may not use this file except in compliance with the License.
@@ -27,20 +27,17 @@ CREATE TABLE IF NOT EXISTS ts_kv
     CONSTRAINT ts_kv_pkey PRIMARY KEY (entity_id, key, ts)
 ) PARTITION BY RANGE (ts);
 
-CREATE TABLE IF NOT EXISTS ts_kv_dictionary
+CREATE TABLE IF NOT EXISTS key_dictionary
 (
     key    varchar(255) NOT NULL,
     key_id serial UNIQUE,
-    CONSTRAINT ts_key_id_pkey PRIMARY KEY (key)
+    CONSTRAINT key_dictionary_id_pkey PRIMARY KEY (key)
 );
 
-CREATE OR REPLACE PROCEDURE drop_partitions_by_max_ttl(IN partition_type varchar, IN system_ttl bigint, INOUT deleted bigint)
+CREATE OR REPLACE PROCEDURE drop_partitions_by_system_ttl(IN partition_type varchar, IN system_ttl bigint, INOUT deleted bigint)
     LANGUAGE plpgsql AS
 $$
 DECLARE
-    max_tenant_ttl             bigint;
-    max_customer_ttl           bigint;
-    max_ttl                    bigint;
     date                       timestamp;
     partition_by_max_ttl_date  varchar;
     partition_by_max_ttl_month varchar;
@@ -52,20 +49,9 @@ DECLARE
     partition_day              integer;
 
 BEGIN
-    SELECT max(attribute_kv.long_v)
-    FROM tenant
-             INNER JOIN attribute_kv ON tenant.id = attribute_kv.entity_id
-    WHERE attribute_kv.attribute_key = 'TTL'
-    into max_tenant_ttl;
-    SELECT max(attribute_kv.long_v)
-    FROM customer
-             INNER JOIN attribute_kv ON customer.id = attribute_kv.entity_id
-    WHERE attribute_kv.attribute_key = 'TTL'
-    into max_customer_ttl;
-    max_ttl := GREATEST(system_ttl, max_customer_ttl, max_tenant_ttl);
-    if max_ttl IS NOT NULL AND max_ttl > 0 THEN
-        date := to_timestamp(EXTRACT(EPOCH FROM current_timestamp) - max_ttl);
-        partition_by_max_ttl_date := get_partition_by_max_ttl_date(partition_type, date);
+    if system_ttl IS NOT NULL AND system_ttl > 0 THEN
+        date := to_timestamp(EXTRACT(EPOCH FROM current_timestamp) - system_ttl);
+        partition_by_max_ttl_date := get_partition_by_system_ttl_date(partition_type, date);
         RAISE NOTICE 'Date by max ttl: %', date;
         RAISE NOTICE 'Partition by max ttl: %', partition_by_max_ttl_date;
         IF partition_by_max_ttl_date IS NOT NULL THEN
@@ -89,7 +75,7 @@ BEGIN
                                      WHERE schemaname = 'public'
                                        AND tablename like 'ts_kv_' || '%'
                                        AND tablename != 'ts_kv_latest'
-                                       AND tablename != 'ts_kv_dictionary'
+                                       AND tablename != 'key_dictionary'
                                        AND tablename != 'ts_kv_indefinite'
                                        AND tablename != partition_by_max_ttl_date
                         LOOP
@@ -110,7 +96,7 @@ BEGIN
                                              WHERE schemaname = 'public'
                                                AND tablename like 'ts_kv_' || '%'
                                                AND tablename != 'ts_kv_latest'
-                                               AND tablename != 'ts_kv_dictionary'
+                                               AND tablename != 'key_dictionary'
                                                AND tablename != 'ts_kv_indefinite'
                                                AND tablename != partition_by_max_ttl_date
                                 LOOP
@@ -152,7 +138,7 @@ BEGIN
                                                      WHERE schemaname = 'public'
                                                        AND tablename like 'ts_kv_' || '%'
                                                        AND tablename != 'ts_kv_latest'
-                                                       AND tablename != 'ts_kv_dictionary'
+                                                       AND tablename != 'key_dictionary'
                                                        AND tablename != 'ts_kv_indefinite'
                                                        AND tablename != partition_by_max_ttl_date
                                         LOOP
@@ -203,7 +189,7 @@ BEGIN
 END
 $$;
 
-CREATE OR REPLACE FUNCTION get_partition_by_max_ttl_date(IN partition_type varchar, IN date timestamp, OUT partition varchar) AS
+CREATE OR REPLACE FUNCTION get_partition_by_system_ttl_date(IN partition_type varchar, IN date timestamp, OUT partition varchar) AS
 $$
 BEGIN
     CASE
@@ -286,7 +272,7 @@ BEGIN
     WHILE FOUND
         LOOP
             EXECUTE format(
-                    'select attribute_kv.long_v from attribute_kv where attribute_kv.entity_id = %L and attribute_kv.attribute_key = %L',
+                    'select attribute_kv.long_v from attribute_kv where attribute_kv.entity_id = %L and attribute_kv.attribute_key = (select key_id from key_dictionary where key = %L)',
                     tenant_id_record, 'TTL') INTO tenant_ttl;
             if tenant_ttl IS NULL THEN
                 tenant_ttl := system_ttl;
@@ -304,7 +290,7 @@ BEGIN
                 SELECT customer.id AS customer_id FROM customer WHERE customer.tenant_id = tenant_id_record
                 LOOP
                     EXECUTE format(
-                            'select attribute_kv.long_v from attribute_kv where attribute_kv.entity_id = %L and attribute_kv.attribute_key = %L',
+                            'select attribute_kv.long_v from attribute_kv where attribute_kv.entity_id = %L and attribute_kv.attribute_key = (select key_id from key_dictionary where key = %L)',
                             customer_id_record, 'TTL') INTO customer_ttl;
                     IF customer_ttl IS NULL THEN
                         customer_ttl_ts := tenant_ttl_ts;

@@ -1,5 +1,5 @@
 #
-# Copyright © 2016-2023 The Thingsboard Authors
+# Copyright © 2016-2025 The Thingsboard Authors
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -14,9 +14,9 @@
 # limitations under the License.
 #
 
-FROM thingsboard/openjdk11:bullseye-slim
+FROM thingsboard/openjdk17:bookworm-slim
 
-ENV PG_MAJOR=12
+ENV PG_MAJOR=16
 
 ENV DATA_FOLDER=/data
 
@@ -29,7 +29,6 @@ ENV CASSANDRA_DATA=/data/cassandra
 ENV SPRING_DRIVER_CLASS_NAME=org.postgresql.Driver
 ENV SPRING_DATASOURCE_URL=jdbc:postgresql://localhost:5432/thingsboard
 ENV SPRING_DATASOURCE_USERNAME=${pkg.user}
-ENV SPRING_DATASOURCE_PASSWORD=postgres
 
 ENV CASSANDRA_HOST=localhost
 ENV CASSANDRA_PORT=9042
@@ -47,7 +46,7 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends wget nmap procps gnupg2 \
     && echo "deb http://apt.postgresql.org/pub/repos/apt/ $(. /etc/os-release && echo -n $VERSION_CODENAME)-pgdg main" | tee --append /etc/apt/sources.list.d/pgdg.list > /dev/null \
     && wget -q https://www.postgresql.org/media/keys/ACCC4CF8.asc -O- | apt-key add - \
-    && echo 'deb http://downloads.apache.org/cassandra/debian 40x main' | tee --append /etc/apt/sources.list.d/cassandra.list > /dev/null \
+    && echo "deb https://debian.cassandra.apache.org 40x main" | tee -a /etc/apt/sources.list.d/cassandra.sources.list > /dev/null \
     && wget -q https://downloads.apache.org/cassandra/KEYS -O- | apt-key add - \
     && apt-get update \
     && apt-get install -y --no-install-recommends cassandra cassandra-tools postgresql-${PG_MAJOR} \
@@ -87,6 +86,7 @@ EXPOSE 9090
 EXPOSE 1883
 EXPOSE 5683/udp
 EXPOSE 5685/udp
+EXPOSE 5686/udp
 
 VOLUME ["/data"]
 

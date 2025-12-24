@@ -1,5 +1,5 @@
 ///
-/// Copyright © 2016-2023 The Thingsboard Authors
+/// Copyright © 2016-2025 The Thingsboard Authors
 ///
 /// Licensed under the Apache License, Version 2.0 (the "License");
 /// you may not use this file except in compliance with the License.
@@ -22,11 +22,9 @@ import { EntitySearchQuery } from '@shared/models/relation.models';
 import { AssetProfileId } from '@shared/models/id/asset-profile-id';
 import { RuleChainId } from '@shared/models/id/rule-chain-id';
 import { DashboardId } from '@shared/models/id/dashboard-id';
-import { EntityInfoData } from '@shared/models/entity.models';
+import { EntityInfoData, HasTenantId, HasVersion } from '@shared/models/entity.models';
 
-export const TB_SERVICE_QUEUE = 'TbServiceQueue';
-
-export interface AssetProfile extends BaseData<AssetProfileId>, ExportableEntity<AssetProfileId> {
+export interface AssetProfile extends BaseData<AssetProfileId>, HasTenantId, HasVersion, ExportableEntity<AssetProfileId> {
   tenantId?: TenantId;
   name: string;
   description?: string;
@@ -35,14 +33,16 @@ export interface AssetProfile extends BaseData<AssetProfileId>, ExportableEntity
   defaultRuleChainId?: RuleChainId;
   defaultDashboardId?: DashboardId;
   defaultQueueName?: string;
+  defaultEdgeRuleChainId?: RuleChainId;
 }
 
 export interface AssetProfileInfo extends EntityInfoData {
+  tenantId?: TenantId;
   image?: string;
   defaultDashboardId?: DashboardId;
 }
 
-export interface Asset extends BaseData<AssetId>, ExportableEntity<AssetId> {
+export interface Asset extends BaseData<AssetId>, HasTenantId, HasVersion, ExportableEntity<AssetId> {
   tenantId?: TenantId;
   customerId?: CustomerId;
   name: string;

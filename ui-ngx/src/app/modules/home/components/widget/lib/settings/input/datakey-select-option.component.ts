@@ -1,5 +1,5 @@
 ///
-/// Copyright © 2016-2023 The Thingsboard Authors
+/// Copyright © 2016-2025 The Thingsboard Authors
 ///
 /// Licensed under the Apache License, Version 2.0 (the "License");
 /// you may not use this file except in compliance with the License.
@@ -14,12 +14,12 @@
 /// limitations under the License.
 ///
 
-import { Component, EventEmitter, forwardRef, Input, OnInit, Output } from '@angular/core';
+import { Component, DestroyRef, EventEmitter, forwardRef, Input, OnInit, Output } from '@angular/core';
 import {
   AbstractControl,
   ControlValueAccessor,
-  FormBuilder,
-  FormGroup,
+  UntypedFormBuilder,
+  UntypedFormGroup,
   NG_VALUE_ACCESSOR,
   Validators
 } from '@angular/forms';
@@ -27,14 +27,14 @@ import { PageComponent } from '@shared/components/page.component';
 import { Store } from '@ngrx/store';
 import { AppState } from '@core/core.state';
 import { TranslateService } from '@ngx-translate/core';
-import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 
 export interface DataKeySelectOption {
   value: string;
   label?: string;
 }
 
-export function dataKeySelectOptionValidator(control: AbstractControl) {
+export const dataKeySelectOptionValidator = (control: AbstractControl) => {
     const selectOption: DataKeySelectOption = control.value;
     if (!selectOption || !selectOption.value) {
       return {
@@ -42,12 +42,12 @@ export function dataKeySelectOptionValidator(control: AbstractControl) {
       };
     }
     return null;
-}
+};
 
 @Component({
   selector: 'tb-datakey-select-option',
   templateUrl: './datakey-select-option.component.html',
-  styleUrls: ['./datakey-select-option.component.scss', './../widget-settings.scss'],
+  styleUrls: ['./datakey-select-option.component.scss'],
   providers: [
     {
       provide: NG_VALUE_ACCESSOR,
@@ -71,12 +71,12 @@ export class DataKeySelectOptionComponent extends PageComponent implements OnIni
 
   private propagateChange = null;
 
-  public selectOptionFormGroup: FormGroup;
+  public selectOptionFormGroup: UntypedFormGroup;
 
   constructor(protected store: Store<AppState>,
               private translate: TranslateService,
-              private domSanitizer: DomSanitizer,
-              private fb: FormBuilder) {
+              private fb: UntypedFormBuilder,
+              private destroyRef: DestroyRef) {
     super(store);
   }
 
@@ -85,7 +85,9 @@ export class DataKeySelectOptionComponent extends PageComponent implements OnIni
       value: [null, [Validators.required]],
       label: [null, []]
     });
-    this.selectOptionFormGroup.valueChanges.subscribe(() => {
+    this.selectOptionFormGroup.valueChanges.pipe(
+      takeUntilDestroyed(this.destroyRef)
+    ).subscribe(() => {
       this.updateModel();
     });
   }
@@ -111,13 +113,6 @@ export class DataKeySelectOptionComponent extends PageComponent implements OnIni
     this.selectOptionFormGroup.patchValue(
       value, {emitEvent: false}
     );
-  }
-
-  selectOptionHtml(): SafeHtml {
-    const selectOption: DataKeySelectOption = this.selectOptionFormGroup.value;
-    const value = selectOption?.value || 'Undefined';
-    const label = selectOption?.label || '';
-    return this.domSanitizer.bypassSecurityTrustHtml(`${value} ${label ? '(<small>' + label + '</small>)' : ''}`);
   }
 
   private updateModel() {

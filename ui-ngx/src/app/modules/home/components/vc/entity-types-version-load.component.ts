@@ -1,5 +1,5 @@
 ///
-/// Copyright © 2016-2023 The Thingsboard Authors
+/// Copyright © 2016-2025 The Thingsboard Authors
 ///
 /// Licensed under the Apache License, Version 2.0 (the "License");
 /// you may not use this file except in compliance with the License.
@@ -14,29 +14,34 @@
 /// limitations under the License.
 ///
 
-import { Component, forwardRef, Input, OnInit, Renderer2, ViewContainerRef } from '@angular/core';
+import { Component, DestroyRef, forwardRef, Input, OnInit, Renderer2, ViewContainerRef } from '@angular/core';
 import {
   AbstractControl,
   ControlValueAccessor,
-  FormArray,
-  FormBuilder,
-  FormControl,
-  FormGroup,
   NG_VALIDATORS,
   NG_VALUE_ACCESSOR,
+  UntypedFormArray,
+  UntypedFormBuilder,
+  UntypedFormControl,
+  UntypedFormGroup,
   Validator,
   Validators
 } from '@angular/forms';
 import { PageComponent } from '@shared/components/page.component';
-import { EntityTypeVersionLoadConfig, exportableEntityTypes, VersionCreationResult } from '@shared/models/vc.models';
+import {
+  entityTypesWithoutRelatedData,
+  EntityTypeVersionLoadConfig,
+  exportableEntityTypes,
+  typesWithCalculatedFields
+} from '@shared/models/vc.models';
 import { Store } from '@ngrx/store';
 import { AppState } from '@core/core.state';
 import { TranslateService } from '@ngx-translate/core';
 import { EntityType, entityTypeTranslations } from '@shared/models/entity-type.models';
-import { MatCheckbox } from '@angular/material/checkbox/checkbox';
+import { MatCheckbox } from '@angular/material/checkbox';
 import { TbPopoverService } from '@shared/components/popover.service';
-import { EntityVersionCreateComponent } from '@home/components/vc/entity-version-create.component';
 import { RemoveOtherEntitiesConfirmComponent } from '@home/components/vc/remove-other-entities-confirm.component';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 
 @Component({
   selector: 'tb-entity-types-version-load',
@@ -64,18 +69,22 @@ export class EntityTypesVersionLoadComponent extends PageComponent implements On
 
   private propagateChange = null;
 
-  public entityTypesVersionLoadFormGroup: FormGroup;
+  public entityTypesVersionLoadFormGroup: UntypedFormGroup;
 
   entityTypes = EntityType;
+  entityTypesWithoutRelatedData = entityTypesWithoutRelatedData;
 
   loading = true;
+
+  readonly typesWithCalculatedFields = typesWithCalculatedFields;
 
   constructor(protected store: Store<AppState>,
               private translate: TranslateService,
               private popoverService: TbPopoverService,
               private renderer: Renderer2,
               private viewContainerRef: ViewContainerRef,
-              private fb: FormBuilder) {
+              private fb: UntypedFormBuilder,
+              private destroyRef: DestroyRef) {
     super(store);
   }
 
@@ -83,7 +92,9 @@ export class EntityTypesVersionLoadComponent extends PageComponent implements On
     this.entityTypesVersionLoadFormGroup = this.fb.group({
       entityTypes: this.fb.array([], [])
     });
-    this.entityTypesVersionLoadFormGroup.valueChanges.subscribe(() => {
+    this.entityTypesVersionLoadFormGroup.valueChanges.pipe(
+      takeUntilDestroyed(this.destroyRef)
+    ).subscribe(() => {
       this.updateModel();
     });
   }
@@ -110,7 +121,7 @@ export class EntityTypesVersionLoadComponent extends PageComponent implements On
       this.prepareEntityTypesFormArray(value), {emitEvent: false});
   }
 
-  public validate(c: FormControl) {
+  public validate(c: UntypedFormControl) {
     return this.entityTypesVersionLoadFormGroup.valid && this.entityTypesFormGroupArray().length ? null : {
       entityTypes: {
         valid: false,
@@ -118,7 +129,7 @@ export class EntityTypesVersionLoadComponent extends PageComponent implements On
     };
   }
 
-  private prepareEntityTypesFormArray(entityTypes: {[entityType: string]: EntityTypeVersionLoadConfig} | undefined): FormArray {
+  private prepareEntityTypesFormArray(entityTypes: {[entityType: string]: EntityTypeVersionLoadConfig} | undefined): UntypedFormArray {
     const entityTypesControls: Array<AbstractControl> = [];
     if (entityTypes) {
       for (const entityType of Object.keys(entityTypes)) {
@@ -137,6 +148,7 @@ export class EntityTypesVersionLoadComponent extends PageComponent implements On
           loadRelations: [config.loadRelations, []],
           loadAttributes: [config.loadAttributes, []],
           loadCredentials: [config.loadCredentials, []],
+          loadCalculatedFields: [config.loadCalculatedFields, []],
           removeOtherEntities: [config.removeOtherEntities, []],
           findExistingEntityByName: [config.findExistingEntityByName, []]
         })
@@ -145,8 +157,8 @@ export class EntityTypesVersionLoadComponent extends PageComponent implements On
     return entityTypeControl;
   }
 
-  entityTypesFormGroupArray(): FormGroup[] {
-    return (this.entityTypesVersionLoadFormGroup.get('entityTypes') as FormArray).controls as FormGroup[];
+  entityTypesFormGroupArray(): UntypedFormGroup[] {
+    return (this.entityTypesVersionLoadFormGroup.get('entityTypes') as UntypedFormArray).controls as UntypedFormGroup[];
   }
 
   entityTypesFormGroupExpanded(entityTypeControl: AbstractControl): boolean {
@@ -158,20 +170,21 @@ export class EntityTypesVersionLoadComponent extends PageComponent implements On
   }
 
   public removeEntityType(index: number) {
-    (this.entityTypesVersionLoadFormGroup.get('entityTypes') as FormArray).removeAt(index);
+    (this.entityTypesVersionLoadFormGroup.get('entityTypes') as UntypedFormArray).removeAt(index);
   }
 
   public addEnabled(): boolean {
-    const entityTypesArray = this.entityTypesVersionLoadFormGroup.get('entityTypes') as FormArray;
+    const entityTypesArray = this.entityTypesVersionLoadFormGroup.get('entityTypes') as UntypedFormArray;
     return entityTypesArray.length < exportableEntityTypes.length;
   }
 
   public addEntityType() {
-    const entityTypesArray = this.entityTypesVersionLoadFormGroup.get('entityTypes') as FormArray;
+    const entityTypesArray = this.entityTypesVersionLoadFormGroup.get('entityTypes') as UntypedFormArray;
     const config: EntityTypeVersionLoadConfig = {
       loadAttributes: true,
       loadRelations: true,
       loadCredentials: true,
+      loadCalculatedFields: true,
       removeOtherEntities: false,
       findExistingEntityByName: true
     };
@@ -187,7 +200,7 @@ export class EntityTypesVersionLoadComponent extends PageComponent implements On
   }
 
   public removeAll() {
-    const entityTypesArray = this.entityTypesVersionLoadFormGroup.get('entityTypes') as FormArray;
+    const entityTypesArray = this.entityTypesVersionLoadFormGroup.get('entityTypes') as UntypedFormArray;
     entityTypesArray.clear();
     this.entityTypesVersionLoadFormGroup.updateValueAndValidity();
   }
@@ -204,38 +217,44 @@ export class EntityTypesVersionLoadComponent extends PageComponent implements On
   allowedEntityTypes(entityTypeControl?: AbstractControl): Array<EntityType> {
     let res = [...exportableEntityTypes];
     const currentEntityType: EntityType = entityTypeControl?.get('entityType')?.value;
-    const value: [{entityType: string, config: EntityTypeVersionLoadConfig}] =
+    const value: [{entityType: string; config: EntityTypeVersionLoadConfig}] =
       this.entityTypesVersionLoadFormGroup.get('entityTypes').value || [];
     const usedEntityTypes = value.map(val => val.entityType).filter(val => val);
     res = res.filter(entityType => !usedEntityTypes.includes(entityType) || entityType === currentEntityType);
     return res;
   }
 
-  onRemoveOtherEntities(removeOtherEntitiesCheckbox: MatCheckbox, entityTypeControl: AbstractControl, $event: Event) {
+  onRemoveOtherEntities(removeOtherEntitiesCheckbox: MatCheckbox, entityTypeControl: AbstractControl) {
     const removeOtherEntities: boolean = entityTypeControl.get('config.removeOtherEntities').value;
-    if (!removeOtherEntities) {
-      $event.preventDefault();
-      $event.stopPropagation();
-      const trigger = $('.mat-checkbox-frame', removeOtherEntitiesCheckbox._elementRef.nativeElement)[0];
+    if (removeOtherEntities) {
+      entityTypeControl.get('config').get('removeOtherEntities').patchValue(false, {emitEvent: true});
+      const trigger = $('.mdc-checkbox__background', removeOtherEntitiesCheckbox._elementRef.nativeElement)[0];
       if (this.popoverService.hasPopover(trigger)) {
         this.popoverService.hidePopover(trigger);
       } else {
-        const removeOtherEntitiesConfirmPopover = this.popoverService.displayPopover(trigger, this.renderer,
-          this.viewContainerRef, RemoveOtherEntitiesConfirmComponent, 'bottom', true, null,
-          {
+        const removeOtherEntitiesConfirmPopover = this.popoverService.displayPopover({
+          trigger,
+          renderer: this.renderer,
+          componentType: RemoveOtherEntitiesConfirmComponent,
+          hostView: this.viewContainerRef,
+          preferredPlacement: 'bottom',
+          context: {
             onClose: (result: boolean | null) => {
               removeOtherEntitiesConfirmPopover.hide();
               if (result) {
                 entityTypeControl.get('config').get('removeOtherEntities').patchValue(true, {emitEvent: true});
               }
             }
-          }, {}, {}, {}, false);
+          },
+          showCloseButton: false,
+          isModal: true
+        });
       }
     }
   }
 
   private updateModel() {
-    const value: [{entityType: string, config: EntityTypeVersionLoadConfig}] =
+    const value: [{entityType: string; config: EntityTypeVersionLoadConfig}] =
       this.entityTypesVersionLoadFormGroup.get('entityTypes').value || [];
     let modelValue: {[entityType: string]: EntityTypeVersionLoadConfig} = null;
     if (value && value.length) {

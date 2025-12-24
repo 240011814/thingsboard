@@ -1,5 +1,5 @@
 /**
- * Copyright © 2016-2023 The Thingsboard Authors
+ * Copyright © 2016-2025 The Thingsboard Authors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,6 +19,9 @@ import com.google.common.base.Function;
 import com.google.common.util.concurrent.FutureCallback;
 import com.google.common.util.concurrent.Futures;
 import com.google.common.util.concurrent.ListenableFuture;
+import jakarta.annotation.Nullable;
+import jakarta.annotation.PostConstruct;
+import jakarta.annotation.PreDestroy;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -27,7 +30,6 @@ import org.springframework.web.context.request.async.DeferredResult;
 import org.thingsboard.common.util.ThingsBoardThreadFactory;
 import org.thingsboard.server.common.data.ApiUsageState;
 import org.thingsboard.server.common.data.Customer;
-import org.thingsboard.server.common.data.Device;
 import org.thingsboard.server.common.data.DeviceProfile;
 import org.thingsboard.server.common.data.EntityView;
 import org.thingsboard.server.common.data.OtaPackageInfo;
@@ -67,6 +69,7 @@ import org.thingsboard.server.dao.device.DeviceProfileService;
 import org.thingsboard.server.dao.device.DeviceService;
 import org.thingsboard.server.dao.edge.EdgeService;
 import org.thingsboard.server.dao.entityview.EntityViewService;
+import org.thingsboard.server.exception.DataValidationException;
 import org.thingsboard.server.dao.exception.IncorrectParameterException;
 import org.thingsboard.server.dao.ota.OtaPackageService;
 import org.thingsboard.server.dao.resource.ResourceService;
@@ -75,15 +78,12 @@ import org.thingsboard.server.dao.rule.RuleChainService;
 import org.thingsboard.server.dao.tenant.TenantService;
 import org.thingsboard.server.dao.usagerecord.ApiUsageStateService;
 import org.thingsboard.server.dao.user.UserService;
+import org.thingsboard.server.exception.ToErrorResponseEntity;
 import org.thingsboard.server.service.security.model.SecurityUser;
 import org.thingsboard.server.service.security.permission.AccessControlService;
 import org.thingsboard.server.service.security.permission.Operation;
 import org.thingsboard.server.service.security.permission.Resource;
-import org.thingsboard.server.service.telemetry.exception.ToErrorResponseEntity;
 
-import javax.annotation.Nullable;
-import javax.annotation.PostConstruct;
-import javax.annotation.PreDestroy;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.function.BiConsumer;
@@ -208,52 +208,22 @@ public class AccessValidator {
 
     public void validate(SecurityUser currentUser, Operation operation, EntityId entityId, FutureCallback<ValidationResult> callback) {
         switch (entityId.getEntityType()) {
-            case DEVICE:
-                validateDevice(currentUser, operation, entityId, callback);
-                return;
-            case DEVICE_PROFILE:
-                validateDeviceProfile(currentUser, operation, entityId, callback);
-                return;
-            case ASSET:
-                validateAsset(currentUser, operation, entityId, callback);
-                return;
-            case ASSET_PROFILE:
-                validateAssetProfile(currentUser, operation, entityId, callback);
-                return;
-            case RULE_CHAIN:
-                validateRuleChain(currentUser, operation, entityId, callback);
-                return;
-            case CUSTOMER:
-                validateCustomer(currentUser, operation, entityId, callback);
-                return;
-            case TENANT:
-                validateTenant(currentUser, operation, entityId, callback);
-                return;
-            case TENANT_PROFILE:
-                validateTenantProfile(currentUser, operation, entityId, callback);
-                return;
-            case USER:
-                validateUser(currentUser, operation, entityId, callback);
-                return;
-            case ENTITY_VIEW:
-                validateEntityView(currentUser, operation, entityId, callback);
-                return;
-            case EDGE:
-                validateEdge(currentUser, operation, entityId, callback);
-                return;
-            case API_USAGE_STATE:
-                validateApiUsageState(currentUser, operation, entityId, callback);
-                return;
-            case TB_RESOURCE:
-                validateResource(currentUser, operation, entityId, callback);
-                return;
-            case OTA_PACKAGE:
-                validateOtaPackage(currentUser, operation, entityId, callback);
-                return;
-            case RPC:
-                validateRpc(currentUser, operation, entityId, callback);
-                return;
-            default:
+            case DEVICE -> validateDevice(currentUser, operation, entityId, callback);
+            case DEVICE_PROFILE -> validateDeviceProfile(currentUser, operation, entityId, callback);
+            case ASSET -> validateAsset(currentUser, operation, entityId, callback);
+            case ASSET_PROFILE -> validateAssetProfile(currentUser, operation, entityId, callback);
+            case RULE_CHAIN -> validateRuleChain(currentUser, operation, entityId, callback);
+            case CUSTOMER -> validateCustomer(currentUser, operation, entityId, callback);
+            case TENANT -> validateTenant(currentUser, operation, entityId, callback);
+            case TENANT_PROFILE -> validateTenantProfile(currentUser, operation, entityId, callback);
+            case USER -> validateUser(currentUser, operation, entityId, callback);
+            case ENTITY_VIEW -> validateEntityView(currentUser, operation, entityId, callback);
+            case EDGE -> validateEdge(currentUser, operation, entityId, callback);
+            case API_USAGE_STATE -> validateApiUsageState(currentUser, operation, entityId, callback);
+            case TB_RESOURCE -> validateResource(currentUser, operation, entityId, callback);
+            case OTA_PACKAGE -> validateOtaPackage(currentUser, operation, entityId, callback);
+            case RPC -> validateRpc(currentUser, operation, entityId, callback);
+            default ->
                 //TODO: add support of other entities
                 throw new IllegalStateException("Not Implemented!");
         }
@@ -263,8 +233,7 @@ public class AccessValidator {
         if (currentUser.isSystemAdmin()) {
             callback.onSuccess(ValidationResult.accessDenied(SYSTEM_ADMINISTRATOR_IS_NOT_ALLOWED_TO_PERFORM_THIS_OPERATION));
         } else {
-            ListenableFuture<Device> deviceFuture = deviceService.findDeviceByIdAsync(currentUser.getTenantId(), new DeviceId(entityId.getId()));
-            Futures.addCallback(deviceFuture, getCallback(callback, device -> {
+            Futures.addCallback(Futures.immediateFuture(deviceService.findDeviceById(currentUser.getTenantId(), new DeviceId(entityId.getId()))), getCallback(callback, device -> {
                 if (device == null) {
                     return ValidationResult.entityNotFound(DEVICE_WITH_REQUESTED_ID_NOT_FOUND);
                 } else {
@@ -575,7 +544,7 @@ public class AccessValidator {
         ResponseEntity responseEntity;
         if (e instanceof ToErrorResponseEntity) {
             responseEntity = ((ToErrorResponseEntity) e).toErrorResponseEntity();
-        } else if (e instanceof IllegalArgumentException || e instanceof IncorrectParameterException) {
+        } else if (e instanceof IllegalArgumentException || e instanceof IncorrectParameterException || e instanceof DataValidationException) {
             responseEntity = new ResponseEntity<>(e.getMessage(), HttpStatus.BAD_REQUEST);
         } else {
             responseEntity = new ResponseEntity<>(defaultErrorStatus);

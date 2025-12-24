@@ -1,5 +1,5 @@
 /**
- * Copyright © 2016-2023 The Thingsboard Authors
+ * Copyright © 2016-2025 The Thingsboard Authors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,10 +17,12 @@ package org.thingsboard.server.service.security.permission;
 
 import org.thingsboard.server.common.data.EntityType;
 
-import java.util.Optional;
+import java.util.Collections;
+import java.util.Set;
 
 public enum Resource {
-    ADMIN_SETTINGS(),
+
+    ADMIN_SETTINGS(EntityType.ADMIN_SETTINGS),
     ALARM(EntityType.ALARM),
     DEVICE(EntityType.DEVICE),
     ASSET(EntityType.ASSET),
@@ -32,7 +34,10 @@ public enum Resource {
     USER(EntityType.USER),
     WIDGETS_BUNDLE(EntityType.WIDGETS_BUNDLE),
     WIDGET_TYPE(EntityType.WIDGET_TYPE),
-    OAUTH2_CONFIGURATION_INFO(),
+    OAUTH2_CLIENT(EntityType.OAUTH2_CLIENT),
+    DOMAIN(EntityType.DOMAIN),
+    MOBILE_APP(EntityType.MOBILE_APP),
+    MOBILE_APP_BUNDLE(EntityType.MOBILE_APP_BUNDLE),
     OAUTH2_CONFIGURATION_TEMPLATE(),
     TENANT_PROFILE(EntityType.TENANT_PROFILE),
     DEVICE_PROFILE(EntityType.DEVICE_PROFILE),
@@ -43,30 +48,37 @@ public enum Resource {
     EDGE(EntityType.EDGE),
     RPC(EntityType.RPC),
     QUEUE(EntityType.QUEUE),
-    VERSION_CONTROL;
     PROPERTY(EntityType.PRODUCT_PROPERTY),
+    NOTIFICATION(EntityType.NOTIFICATION_TARGET, EntityType.NOTIFICATION_TEMPLATE,
+            EntityType.NOTIFICATION_REQUEST, EntityType.NOTIFICATION_RULE),
+    MOBILE_APP_SETTINGS,
+    JOB(EntityType.JOB),
+    AI_MODEL(EntityType.AI_MODEL),
+    API_KEY(EntityType.API_KEY);
+    VERSION_CONTROL;
 
 
-    private final EntityType entityType;
+    private final Set<EntityType> entityTypes;
 
     Resource() {
-        this.entityType = null;
+        this.entityTypes = Collections.emptySet();
     }
 
-    Resource(EntityType entityType) {
-        this.entityType = entityType;
+    Resource(EntityType... entityTypes) {
+        this.entityTypes = Set.of(entityTypes);
     }
 
-    public Optional<EntityType> getEntityType() {
-        return Optional.ofNullable(entityType);
+    public Set<EntityType> getEntityTypes() {
+        return entityTypes;
     }
 
     public static Resource of(EntityType entityType) {
         for (Resource resource : Resource.values()) {
-            if (resource.getEntityType().orElse(null) == entityType) {
+            if (resource.getEntityTypes().contains(entityType)) {
                 return resource;
             }
         }
         throw new IllegalArgumentException("Unknown EntityType: " + entityType.name());
     }
+
 }

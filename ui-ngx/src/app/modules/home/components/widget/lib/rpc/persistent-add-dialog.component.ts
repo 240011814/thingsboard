@@ -1,5 +1,5 @@
 ///
-/// Copyright © 2016-2023 The Thingsboard Authors
+/// Copyright © 2016-2025 The Thingsboard Authors
 ///
 /// Licensed under the Apache License, Version 2.0 (the "License");
 /// you may not use this file except in compliance with the License.
@@ -14,15 +14,16 @@
 /// limitations under the License.
 ///
 
-import { Component, OnInit } from '@angular/core';
+import { Component, DestroyRef, OnInit } from '@angular/core';
 import { DialogComponent } from '@shared/components/dialog.component';
 import { Store } from '@ngrx/store';
 import { AppState } from '@core/core.state';
 import { Router } from '@angular/router';
 import { MatDialogRef } from '@angular/material/dialog';
-import { FormBuilder, FormGroup, Validators } from '@angular/forms';
+import { UntypedFormBuilder, UntypedFormGroup, Validators } from '@angular/forms';
 import { RequestData } from '@shared/models/rpc.models';
 import { TranslateService } from '@ngx-translate/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 
 @Component({
   selector: 'tb-persistent-add-dialog',
@@ -32,7 +33,7 @@ import { TranslateService } from '@ngx-translate/core';
 
 export class PersistentAddDialogComponent extends DialogComponent<PersistentAddDialogComponent, RequestData> implements OnInit {
 
-  public persistentFormGroup: FormGroup;
+  public persistentFormGroup: UntypedFormGroup;
   public rpcMessageTypeText: string;
 
   private requestData: RequestData = null;
@@ -40,8 +41,9 @@ export class PersistentAddDialogComponent extends DialogComponent<PersistentAddD
   constructor(protected store: Store<AppState>,
               protected router: Router,
               public dialogRef: MatDialogRef<PersistentAddDialogComponent, RequestData>,
-              private fb: FormBuilder,
-              private translate: TranslateService) {
+              private fb: UntypedFormBuilder,
+              private translate: TranslateService,
+              private destroyRef: DestroyRef) {
     super(store, router, dialogRef);
 
     this.persistentFormGroup = this.fb.group(
@@ -62,7 +64,9 @@ export class PersistentAddDialogComponent extends DialogComponent<PersistentAddD
 
   ngOnInit(): void {
     this.rpcMessageTypeText = this.translate.instant('widgets.persistent-table.message-types.false');
-    this.persistentFormGroup.get('oneWayElseTwoWay').valueChanges.subscribe(
+    this.persistentFormGroup.get('oneWayElseTwoWay').valueChanges.pipe(
+      takeUntilDestroyed(this.destroyRef)
+    ).subscribe(
       () => {
         this.rpcMessageTypeText = this.translate.instant(`widgets.persistent-table.message-types.${this.persistentFormGroup.get('oneWayElseTwoWay').value}`);
       }

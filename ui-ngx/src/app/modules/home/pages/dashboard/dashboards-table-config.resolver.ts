@@ -1,5 +1,5 @@
 ///
-/// Copyright © 2016-2023 The Thingsboard Authors
+/// Copyright © 2016-2025 The Thingsboard Authors
 ///
 /// Licensed under the Apache License, Version 2.0 (the "License");
 /// you may not use this file except in compliance with the License.
@@ -16,7 +16,7 @@
 
 import { Injectable } from '@angular/core';
 
-import { ActivatedRouteSnapshot, Resolve, Router } from '@angular/router';
+import { ActivatedRouteSnapshot, Router } from '@angular/router';
 import {
   CellActionDescriptor,
   checkBoxCell,
@@ -47,6 +47,7 @@ import {
 import {
   Dashboard,
   DashboardInfo,
+  DashboardSetup,
   getDashboardAssignedCustomersText,
   isCurrentPublicDashboardCustomer,
   isPublicDashboard
@@ -63,18 +64,29 @@ import {
   MakeDashboardPublicDialogData
 } from '@modules/home/pages/dashboard/make-dashboard-public-dialog.component';
 import { DashboardTabsComponent } from '@home/pages/dashboard/dashboard-tabs.component';
-import { ImportExportService } from '@home/components/import-export/import-export.service';
+import { ImportExportService } from '@shared/import-export/import-export.service';
 import { EdgeService } from '@core/http/edge.service';
 import {
   AddEntitiesToEdgeDialogComponent,
   AddEntitiesToEdgeDialogData
 } from '@home/dialogs/add-entities-to-edge-dialog.component';
 import { HomeDialogsService } from '@home/dialogs/home-dialogs.service';
+import { Widget } from '@shared/models/widget.models';
+import { EntityAliases } from '@shared/models/alias.models';
+import {
+  EntityAliasesDialogComponent,
+  EntityAliasesDialogData
+} from '@home/components/alias/entity-aliases-dialog.component';
+import {
+  DashboardInfoDialogData,
+  ImportDashboardFileDialogComponent
+} from "@home/pages/dashboard/import-dashboard-file-dialog.component";
+import { PageLink } from "@shared/models/page/page-link";
 
 @Injectable()
-export class DashboardsTableConfigResolver implements Resolve<EntityTableConfig<DashboardInfo | Dashboard>> {
+export class DashboardsTableConfigResolver {
 
-  private readonly config: EntityTableConfig<DashboardInfo | Dashboard> = new EntityTableConfig<DashboardInfo | Dashboard>();
+  private readonly config: EntityTableConfig<Dashboard, PageLink, DashboardInfo> = new EntityTableConfig<Dashboard, PageLink, DashboardInfo>();
 
   constructor(private store: Store<AppState>,
               private dashboardService: DashboardService,
@@ -103,9 +115,7 @@ export class DashboardsTableConfigResolver implements Resolve<EntityTableConfig<
     this.config.deleteEntitiesContent = () => this.translate.instant('dashboard.delete-dashboards-text');
 
     this.config.loadEntity = id => this.dashboardService.getDashboard(id.id);
-    this.config.saveEntity = dashboard => {
-      return this.dashboardService.saveDashboard(dashboard as Dashboard);
-    };
+    this.config.saveEntity = dashboard => this.saveAndAssignDashboard(dashboard as DashboardSetup);
     this.config.onEntityAction = action => this.onDashboardAction(action);
     this.config.detailsReadonly = () => (this.config.componentsData.dashboardScope === 'customer_user' ||
       this.config.componentsData.dashboardScope === 'edge_customer_user');
@@ -117,6 +127,10 @@ export class DashboardsTableConfigResolver implements Resolve<EntityTableConfig<
         this.openDashboard($event, dashboard);
       }
       return true;
+    };
+
+    this.config.entityAdded = dashboard => {
+      this.openDashboard(null, dashboard);
     };
   }
 
@@ -178,13 +192,9 @@ export class DashboardsTableConfigResolver implements Resolve<EntityTableConfig<
     if (dashboardScope === 'tenant') {
       columns.push(
         new EntityTableColumn<DashboardInfo>('customersTitle', 'dashboard.assignedToCustomers',
-          '50%', entity => {
-            return getDashboardAssignedCustomersText(entity);
-          }, () => ({}), false),
+          '50%', entity => getDashboardAssignedCustomersText(entity), () => ({}), false),
         new EntityTableColumn<DashboardInfo>('dashboardIsPublic', 'dashboard.public', '60px',
-          entity => {
-            return checkBoxCell(isPublicDashboard(entity));
-          }, () => ({}), false),
+          entity => checkBoxCell(isPublicDashboard(entity)), () => ({}), false),
       );
     }
     return columns;
@@ -269,7 +279,7 @@ export class DashboardsTableConfigResolver implements Resolve<EntityTableConfig<
         {
           name: this.translate.instant('edge.unassign-from-edge'),
           icon: 'assignment_return',
-          isEnabled: (entity) => true,
+          isEnabled: () => true,
           onAction: ($event, entity) => this.unassignFromEdge($event, entity)
         }
       );
@@ -370,7 +380,7 @@ export class DashboardsTableConfigResolver implements Resolve<EntityTableConfig<
     return actions;
   }
 
-  openDashboard($event: Event, dashboard: DashboardInfo) {
+  openDashboard($event: Event, dashboard: Dashboard) {
     if ($event) {
       $event.stopPropagation();
     }
@@ -383,8 +393,8 @@ export class DashboardsTableConfigResolver implements Resolve<EntityTableConfig<
     }
   }
 
-  importDashboard($event: Event) {
-    this.importExport.importDashboard().subscribe(
+  importDashboard(_$event: Event) {
+    this.importExport.importDashboard(this.editMissingAliases.bind(this)).subscribe(
       (dashboard) => {
         if (dashboard) {
           this.config.updateData();
@@ -393,11 +403,49 @@ export class DashboardsTableConfigResolver implements Resolve<EntityTableConfig<
     );
   }
 
-  exportDashboard($event: Event, dashboard: DashboardInfo) {
+  private editMissingAliases(widgets: Array<Widget>, isSingleWidget: boolean,
+                             customTitle: string, missingEntityAliases: EntityAliases): Observable<EntityAliases> {
+    return this.dialog.open<EntityAliasesDialogComponent, EntityAliasesDialogData,
+      EntityAliases>(EntityAliasesDialogComponent, {
+      disableClose: true,
+      panelClass: ['tb-dialog', 'tb-fullscreen-dialog'],
+      data: {
+        entityAliases: missingEntityAliases,
+        widgets,
+        customTitle,
+        isSingleWidget,
+        disableAdd: true
+      }
+    }).afterClosed().pipe(
+      map((updatedEntityAliases) => {
+          if (updatedEntityAliases) {
+            return updatedEntityAliases;
+          } else {
+            throw new Error('Unable to resolve missing entity aliases!');
+          }
+        }
+      ));
+  }
+
+  exportDashboard($event: Event, dashboard: Dashboard) {
     if ($event) {
       $event.stopPropagation();
     }
     this.importExport.exportDashboard(dashboard.id.id);
+  }
+
+  importDashboardFile($event: Event, dashboard: Dashboard) {
+    if ($event) {
+      $event.stopPropagation();
+    }
+    return this.dialog.open<ImportDashboardFileDialogComponent, DashboardInfoDialogData,
+      boolean>(ImportDashboardFileDialogComponent, {
+      disableClose: true,
+      panelClass: ['tb-dialog', 'tb-fullscreen-dialog'],
+      data: {
+        dashboard
+      }
+    }).afterClosed();
   }
 
   addDashboardsToCustomer($event: Event) {
@@ -420,7 +468,7 @@ export class DashboardsTableConfigResolver implements Resolve<EntityTableConfig<
       });
   }
 
-  makePublic($event: Event, dashboard: DashboardInfo) {
+  makePublic($event: Event, dashboard: Dashboard) {
     if ($event) {
       $event.stopPropagation();
     }
@@ -441,7 +489,7 @@ export class DashboardsTableConfigResolver implements Resolve<EntityTableConfig<
     );
   }
 
-  makePrivate($event: Event, dashboard: DashboardInfo) {
+  makePrivate($event: Event, dashboard: Dashboard) {
     if ($event) {
       $event.stopPropagation();
     }
@@ -463,7 +511,7 @@ export class DashboardsTableConfigResolver implements Resolve<EntityTableConfig<
     );
   }
 
-  manageAssignedCustomers($event: Event, dashboard: DashboardInfo) {
+  manageAssignedCustomers($event: Event, dashboard: Dashboard) {
     const assignedCustomersIds = dashboard.assignedCustomers ?
       dashboard.assignedCustomers.map(customerInfo => customerInfo.customerId.id) : [];
     this.showManageAssignedCustomersDialog($event, [dashboard.id.id], 'manage', assignedCustomersIds);
@@ -500,7 +548,7 @@ export class DashboardsTableConfigResolver implements Resolve<EntityTableConfig<
       });
   }
 
-  unassignFromCustomer($event: Event, dashboard: DashboardInfo, customerId: string) {
+  unassignFromCustomer($event: Event, dashboard: Dashboard, customerId: string) {
     if ($event) {
       $event.stopPropagation();
     }
@@ -550,13 +598,16 @@ export class DashboardsTableConfigResolver implements Resolve<EntityTableConfig<
     );
   }
 
-  onDashboardAction(action: EntityAction<DashboardInfo>): boolean {
+  onDashboardAction(action: EntityAction<Dashboard>): boolean {
     switch (action.action) {
       case 'open':
         this.openDashboard(action.event, action.entity);
         return true;
       case 'export':
         this.exportDashboard(action.event, action.entity);
+        return true;
+      case 'import':
+        this.importDashboardFile(action.event, action.entity);
         return true;
       case 'makePublic':
         this.makePublic(action.event, action.entity);
@@ -644,6 +695,19 @@ export class DashboardsTableConfigResolver implements Resolve<EntityTableConfig<
           );
         }
       }
+    );
+  }
+
+  saveAndAssignDashboard(dashboard: DashboardSetup): Observable<Dashboard> {
+    const {assignedCustomerIds, ...dashboardToCreate} = dashboard;
+
+    return this.dashboardService.saveDashboard(dashboardToCreate as Dashboard).pipe(
+      mergeMap((createdDashboard) => {
+        if (assignedCustomerIds?.length) {
+          return this.dashboardService.addDashboardCustomers(createdDashboard.id.id, assignedCustomerIds);
+        }
+        return of(createdDashboard);
+      })
     );
   }
 

@@ -1,5 +1,5 @@
 /**
- * Copyright © 2016-2023 The Thingsboard Authors
+ * Copyright © 2016-2025 The Thingsboard Authors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -27,9 +27,9 @@ import org.eclipse.californium.scandium.dtls.HandshakeException;
 import org.eclipse.californium.scandium.dtls.HandshakeResultHandler;
 import org.eclipse.californium.scandium.dtls.x509.NewAdvancedCertificateVerifier;
 import org.eclipse.californium.scandium.util.ServerNames;
-import org.thingsboard.server.common.data.StringUtils;
 import org.thingsboard.server.common.data.DeviceProfile;
 import org.thingsboard.server.common.data.DeviceTransportType;
+import org.thingsboard.server.common.data.StringUtils;
 import org.thingsboard.server.common.msg.EncryptionUtil;
 import org.thingsboard.server.common.transport.TransportService;
 import org.thingsboard.server.common.transport.TransportServiceCallback;
@@ -109,7 +109,8 @@ public class TbCoapDtlsCertificateVerifier implements NewAdvancedCertificateVeri
                     if (msg != null && strCert.equals(msg.getCredentials())) {
                         DeviceProfile deviceProfile = msg.getDeviceProfile();
                         if (msg.hasDeviceInfo() && deviceProfile != null) {
-                            tbCoapDtlsSessionInMemoryStorage.put(remotePeer, new TbCoapDtlsSessionInfo(msg, deviceProfile));
+                            TbCoapDtlsSessionKey tbCoapDtlsSessionKey = new TbCoapDtlsSessionKey(remotePeer, msg.getCredentials());
+                            tbCoapDtlsSessionInMemoryStorage.put(tbCoapDtlsSessionKey, new TbCoapDtlsSessionInfo(msg, deviceProfile));
                         }
                         break;
                     }
@@ -138,7 +139,7 @@ public class TbCoapDtlsCertificateVerifier implements NewAdvancedCertificateVeri
     public void setResultHandler(HandshakeResultHandler resultHandler) {
     }
 
-    public ConcurrentMap<InetSocketAddress, TbCoapDtlsSessionInfo> getTbCoapDtlsSessionsMap() {
+    public ConcurrentMap<TbCoapDtlsSessionKey, TbCoapDtlsSessionInfo> getTbCoapDtlsSessionsMap() {
         return tbCoapDtlsSessionInMemoryStorage.getDtlsSessionsMap();
     }
 

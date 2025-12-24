@@ -1,5 +1,5 @@
 /**
- * Copyright © 2016-2023 The Thingsboard Authors
+ * Copyright © 2016-2025 The Thingsboard Authors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -34,8 +34,12 @@ public @interface AfterStartUp {
     int QUEUE_INFO_INITIALIZATION = 1;
     int DISCOVERY_SERVICE = 2;
 
+    int STARTUP_SERVICE = 8;
     int ACTOR_SYSTEM = 9;
-    int REGULAR_SERVICE = 10;
+
+    int CF_READ_CF_SERVICE = 10;
+
+    int REGULAR_SERVICE = 11;
 
     int BEFORE_TRANSPORT_SERVICE = Integer.MAX_VALUE - 1001;
     int TRANSPORT_SERVICE = Integer.MAX_VALUE - 1000;

@@ -1,5 +1,5 @@
 /**
- * Copyright © 2016-2023 The Thingsboard Authors
+ * Copyright © 2016-2025 The Thingsboard Authors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,7 +20,7 @@ import org.springframework.stereotype.Component;
 import org.thingsboard.server.common.data.StringUtils;
 import org.thingsboard.server.common.data.Tenant;
 import org.thingsboard.server.common.data.id.TenantId;
-import org.thingsboard.server.dao.exception.DataValidationException;
+import org.thingsboard.server.exception.DataValidationException;
 import org.thingsboard.server.dao.service.DataValidator;
 import org.thingsboard.server.dao.tenant.TenantDao;
 
@@ -32,9 +32,7 @@ public class TenantDataValidator extends DataValidator<Tenant> {
 
     @Override
     protected void validateDataImpl(TenantId tenantId, Tenant tenant) {
-        if (StringUtils.isEmpty(tenant.getTitle())) {
-            throw new DataValidationException("Tenant title should be specified!");
-        }
+        validateString("Tenant title", tenant.getTitle());
         if (!StringUtils.isEmpty(tenant.getEmail())) {
             validateEmail(tenant.getEmail());
         }

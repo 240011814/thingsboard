@@ -1,5 +1,5 @@
 /**
- * Copyright © 2016-2023 The Thingsboard Authors
+ * Copyright © 2016-2025 The Thingsboard Authors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,14 +19,14 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Component;
 import org.thingsboard.server.common.data.DataConstants;
-import org.thingsboard.server.common.data.StringUtils;
 import org.thingsboard.server.common.data.TenantProfile;
 import org.thingsboard.server.common.data.id.TenantId;
 import org.thingsboard.server.common.data.queue.ProcessingStrategy;
 import org.thingsboard.server.common.data.queue.SubmitStrategy;
 import org.thingsboard.server.common.data.queue.SubmitStrategyType;
+import org.thingsboard.server.common.data.tenant.profile.DefaultTenantProfileConfiguration;
 import org.thingsboard.server.common.data.tenant.profile.TenantProfileQueueConfiguration;
-import org.thingsboard.server.dao.exception.DataValidationException;
+import org.thingsboard.server.exception.DataValidationException;
 import org.thingsboard.server.dao.service.DataValidator;
 import org.thingsboard.server.dao.tenant.TenantProfileDao;
 import org.thingsboard.server.dao.tenant.TenantProfileService;
@@ -48,15 +48,16 @@ public class TenantProfileDataValidator extends DataValidator<TenantProfile> {
 
     @Override
     protected void validateDataImpl(TenantId tenantId, TenantProfile tenantProfile) {
-        if (StringUtils.isEmpty(tenantProfile.getName())) {
-            throw new DataValidationException("Tenant profile name should be specified!");
-        }
+        validateString("Tenant profile name", tenantProfile.getName());
         if (tenantProfile.getProfileData() == null) {
             throw new DataValidationException("Tenant profile data should be specified!");
         }
-        if (tenantProfile.getProfileData().getConfiguration() == null) {
+
+        Optional<DefaultTenantProfileConfiguration> profileConfiguration = tenantProfile.getProfileConfiguration();
+        if (profileConfiguration.isEmpty()) {
             throw new DataValidationException("Tenant profile data configuration should be specified!");
         }
+
         if (tenantProfile.isDefault()) {
             TenantProfile defaultTenantProfile = tenantProfileService.findDefaultTenantProfile(tenantId);
             if (defaultTenantProfile != null && !defaultTenantProfile.getId().equals(tenantProfile.getId())) {
@@ -99,8 +100,6 @@ public class TenantProfileDataValidator extends DataValidator<TenantProfile> {
         TenantProfile old = tenantProfileDao.findById(TenantId.SYS_TENANT_ID, tenantProfile.getId().getId());
         if (old == null) {
             throw new DataValidationException("Can't update non existing tenant profile!");
-        } else if (old.isIsolatedTbRuleEngine() != tenantProfile.isIsolatedTbRuleEngine()) {
-            throw new DataValidationException("Can't update isolatedTbRuleEngine property!");
         }
         return old;
     }

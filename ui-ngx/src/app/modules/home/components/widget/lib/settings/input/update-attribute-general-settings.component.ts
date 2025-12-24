@@ -1,5 +1,5 @@
 ///
-/// Copyright © 2016-2023 The Thingsboard Authors
+/// Copyright © 2016-2025 The Thingsboard Authors
 ///
 /// Licensed under the Apache License, Version 2.0 (the "License");
 /// you may not use this file except in compliance with the License.
@@ -14,12 +14,12 @@
 /// limitations under the License.
 ///
 
-import { Component, forwardRef, Input, OnInit } from '@angular/core';
+import { Component, DestroyRef, forwardRef, Input, OnInit } from '@angular/core';
 import {
   ControlValueAccessor,
-  FormBuilder,
-  FormControl,
-  FormGroup,
+  UntypedFormBuilder,
+  UntypedFormControl,
+  UntypedFormGroup,
   NG_VALIDATORS,
   NG_VALUE_ACCESSOR,
   Validator
@@ -28,6 +28,8 @@ import { PageComponent } from '@shared/components/page.component';
 import { Store } from '@ngrx/store';
 import { AppState } from '@core/core.state';
 import { TranslateService } from '@ngx-translate/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { widgetTitleAutocompleteValues } from '@app/shared/public-api';
 
 export interface UpdateAttributeGeneralSettings {
   widgetTitle: string;
@@ -76,16 +78,19 @@ export class UpdateAttributeGeneralSettingsComponent extends PageComponent imple
 
   @Input()
   hasLabelValue = true;
+  
+  predefinedValues = widgetTitleAutocompleteValues;
 
   private modelValue: UpdateAttributeGeneralSettings;
 
   private propagateChange = null;
 
-  public updateAttributeGeneralSettingsFormGroup: FormGroup;
+  public updateAttributeGeneralSettingsFormGroup: UntypedFormGroup;
 
   constructor(protected store: Store<AppState>,
               private translate: TranslateService,
-              private fb: FormBuilder) {
+              private fb: UntypedFormBuilder,
+              private destroyRef: DestroyRef) {
     super(store);
   }
 
@@ -99,14 +104,20 @@ export class UpdateAttributeGeneralSettingsComponent extends PageComponent imple
     });
     if (this.hasLabelValue) {
       this.updateAttributeGeneralSettingsFormGroup.addControl('labelValue', this.fb.control('', []));
-      this.updateAttributeGeneralSettingsFormGroup.get('showLabel').valueChanges.subscribe(() => {
+      this.updateAttributeGeneralSettingsFormGroup.get('showLabel').valueChanges.pipe(
+        takeUntilDestroyed(this.destroyRef)
+      ).subscribe(() => {
         this.updateValidators(true);
       });
     }
-    this.updateAttributeGeneralSettingsFormGroup.get('isRequired').valueChanges.subscribe(() => {
+    this.updateAttributeGeneralSettingsFormGroup.get('isRequired').valueChanges.pipe(
+      takeUntilDestroyed(this.destroyRef)
+    ).subscribe(() => {
       this.updateValidators(true);
     });
-    this.updateAttributeGeneralSettingsFormGroup.valueChanges.subscribe(() => {
+    this.updateAttributeGeneralSettingsFormGroup.valueChanges.pipe(
+      takeUntilDestroyed(this.destroyRef)
+    ).subscribe(() => {
       this.updateModel();
     });
     this.updateValidators(false);
@@ -136,7 +147,7 @@ export class UpdateAttributeGeneralSettingsComponent extends PageComponent imple
     this.updateValidators(false);
   }
 
-  public validate(c: FormControl) {
+  public validate(c: UntypedFormControl) {
     return this.updateAttributeGeneralSettingsFormGroup.valid ? null : {
       updateAttributeGeneralSettings: {
         valid: false,

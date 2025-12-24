@@ -1,5 +1,5 @@
 /**
- * Copyright © 2016-2023 The Thingsboard Authors
+ * Copyright © 2016-2025 The Thingsboard Authors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,7 +17,7 @@ package org.thingsboard.server.common.msg;
 
 import lombok.extern.slf4j.Slf4j;
 import org.bouncycastle.crypto.digests.SHA3Digest;
-import org.bouncycastle.pqc.math.linearalgebra.ByteUtils;
+import org.bouncycastle.pqc.legacy.math.linearalgebra.ByteUtils;
 
 /**
  * @author Valerii Sosliuk
@@ -33,6 +33,14 @@ public class EncryptionUtil {
                 .replaceAll("\n", "")
                 .replaceAll("\r", "")
                 .replaceAll("-----END CERTIFICATE-----", "");
+    }
+
+    public static String certTrimNewLinesForChainInDeviceProfile(String input) {
+        return input.replaceAll("\n", "")
+                .replaceAll("\r", "")
+                .replaceAll("-----BEGIN CERTIFICATE-----", "-----BEGIN CERTIFICATE-----\n")
+                .replaceAll("-----END CERTIFICATE-----", "\n-----END CERTIFICATE-----\n")
+                .trim();
     }
 
     public static String pubkTrimNewLines(String input) {

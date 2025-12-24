@@ -1,5 +1,5 @@
 /**
- * Copyright © 2016-2023 The Thingsboard Authors
+ * Copyright © 2016-2025 The Thingsboard Authors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,7 +22,6 @@ import org.junit.Before;
 import org.junit.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.thingsboard.server.common.data.EntitySubtype;
-import org.thingsboard.server.common.data.StringUtils;
 import org.thingsboard.server.common.data.asset.Asset;
 import org.thingsboard.server.common.data.asset.AssetProfile;
 import org.thingsboard.server.common.data.id.AssetId;
@@ -45,6 +44,7 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
@@ -78,7 +78,7 @@ public class JpaAssetDaoTest extends AbstractJpaDaoTest {
             UUID assetId = Uuids.timeBased();
             UUID tenantId = i % 2 == 0 ? tenantId1 : tenantId2;
             UUID customerId = i % 2 == 0 ? customerId1 : customerId2;
-            assets.add(saveAsset(assetId, tenantId, customerId, "ASSET_" + i));
+            assets.add(saveAsset(assetId, tenantId, customerId, "ASSET_" + i, "label_" + i));
         }
         assertEquals(assets.size(), assetDao.find(TenantId.fromUUID(tenantId1)).size());
     }
@@ -93,6 +93,12 @@ public class JpaAssetDaoTest extends AbstractJpaDaoTest {
             assetProfileDao.removeById(TenantId.SYS_TENANT_ID, assetProfileId.getId());
         }
         savedAssetProfiles.clear();
+    }
+
+    @Test
+    public void testSaveDeviceName0x00_thenSomeDatabaseException() {
+        assertThatThrownBy(() -> assets.add(
+                saveAsset(UUID.randomUUID(), tenantId2, customerId2, "F0929906\000\000\000\000\000\000\000\000\000")));
     }
 
     @Test
@@ -113,6 +119,21 @@ public class JpaAssetDaoTest extends AbstractJpaDaoTest {
     @Test
     public void testFindAssetsByTenantIdAndCustomerId() {
         PageLink pageLink = new PageLink(20, 0, "ASSET_");
+        PageData<Asset> assets1 = assetDao.findAssetsByTenantIdAndCustomerId(tenantId1, customerId1, pageLink);
+        assertEquals(20, assets1.getData().size());
+
+        pageLink = pageLink.nextPageLink();
+        PageData<Asset> assets2 = assetDao.findAssetsByTenantIdAndCustomerId(tenantId1, customerId1, pageLink);
+        assertEquals(10, assets2.getData().size());
+
+        pageLink = pageLink.nextPageLink();
+        PageData<Asset> assets3 = assetDao.findAssetsByTenantIdAndCustomerId(tenantId1, customerId1, pageLink);
+        assertEquals(0, assets3.getData().size());
+    }
+
+    @Test
+    public void testFindAssetsByTenantIdAndCustomerIdByLabel() {
+        PageLink pageLink = new PageLink(20, 0, "label_");
         PageData<Asset> assets1 = assetDao.findAssetsByTenantIdAndCustomerId(tenantId1, customerId1, pageLink);
         assertEquals(20, assets1.getData().size());
 
@@ -174,21 +195,31 @@ public class JpaAssetDaoTest extends AbstractJpaDaoTest {
     @Test
     public void testFindAssetsByTenantIdAndType() {
         String type = "TYPE_2";
-        assets.add(saveAsset(Uuids.timeBased(), tenantId2, customerId2, "TEST_ASSET", type));
+        String testLabel = "test_label";
+        assets.add(saveAsset(Uuids.timeBased(), tenantId2, customerId2, "TEST_ASSET", type, testLabel));
 
         List<Asset> foundedAssetsByType = assetDao
                 .findAssetsByTenantIdAndType(tenantId2, type, new PageLink(3)).getData();
         compareFoundedAssetByType(foundedAssetsByType, type);
+
+        List<Asset> foundedAssetsByTypeAndLabel = assetDao
+                .findAssetsByTenantIdAndType(tenantId2, type, new PageLink(3, 0, testLabel)).getData();
+        assertEquals(1, foundedAssetsByTypeAndLabel.size());
     }
 
     @Test
     public void testFindAssetsByTenantIdAndCustomerIdAndType() {
         String type = "TYPE_2";
-        assets.add(saveAsset(Uuids.timeBased(), tenantId2, customerId2, "TEST_ASSET", type));
+        String testLabel = "test_label";
+        assets.add(saveAsset(Uuids.timeBased(), tenantId2, customerId2, "TEST_ASSET", type, testLabel));
 
         List<Asset> foundedAssetsByType = assetDao
                 .findAssetsByTenantIdAndCustomerIdAndType(tenantId2, customerId2, type, new PageLink(3)).getData();
         compareFoundedAssetByType(foundedAssetsByType, type);
+
+        List<Asset> foundedAssetsByTypeAndLabel = assetDao
+                .findAssetsByTenantIdAndCustomerIdAndType(tenantId2, customerId2, type, new PageLink(3, 0, testLabel)).getData();
+        assertEquals(1, foundedAssetsByTypeAndLabel.size());
     }
 
     private void compareFoundedAssetByType(List<Asset> foundedAssetsByType, String type) {
@@ -222,10 +253,14 @@ public class JpaAssetDaoTest extends AbstractJpaDaoTest {
     }
 
     private Asset saveAsset(UUID id, UUID tenantId, UUID customerId, String name) {
-        return saveAsset(id, tenantId, customerId, name, null);
+        return saveAsset(id, tenantId, customerId, name, null, null);
     }
 
-    private Asset saveAsset(UUID id, UUID tenantId, UUID customerId, String name, String type) {
+    private Asset saveAsset(UUID id, UUID tenantId, UUID customerId, String name, String label) {
+        return saveAsset(id, tenantId, customerId, name, null, label);
+    }
+
+    private Asset saveAsset(UUID id, UUID tenantId, UUID customerId, String name, String type, String label) {
         if (type == null) {
             type = "default";
         }
@@ -235,6 +270,7 @@ public class JpaAssetDaoTest extends AbstractJpaDaoTest {
         asset.setCustomerId(new CustomerId(customerId));
         asset.setName(name);
         asset.setType(type);
+        asset.setLabel(label);
         asset.setAssetProfileId(assetProfileId(type));
         return assetDao.save(TenantId.fromUUID(tenantId), asset);
     }

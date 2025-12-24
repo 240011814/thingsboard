@@ -1,5 +1,5 @@
 ///
-/// Copyright © 2016-2023 The Thingsboard Authors
+/// Copyright © 2016-2025 The Thingsboard Authors
 ///
 /// Licensed under the Apache License, Version 2.0 (the "License");
 /// you may not use this file except in compliance with the License.
@@ -16,10 +16,12 @@
 
 import { Component } from '@angular/core';
 import { WidgetSettings, WidgetSettingsComponent } from '@shared/models/widget.models';
-import { FormBuilder, FormGroup } from '@angular/forms';
+import { UntypedFormBuilder, UntypedFormGroup } from '@angular/forms';
 import { Store } from '@ngrx/store';
 import { AppState } from '@core/core.state';
-import { defaultMapSettings } from 'src/app/modules/home/components/widget/lib/maps/map-models';
+import { isDefinedAndNotNull } from '@core/utils';
+import { mapWidgetDefaultSettings } from '@home/components/widget/lib/maps/map-widget.models';
+import { WidgetConfigComponentData } from '@home/models/widget-component.models';
 
 @Component({
   selector: 'tb-map-widget-settings',
@@ -28,36 +30,49 @@ import { defaultMapSettings } from 'src/app/modules/home/components/widget/lib/m
 })
 export class MapWidgetSettingsComponent extends WidgetSettingsComponent {
 
-  mapWidgetSettingsForm: FormGroup;
+  mapWidgetSettingsForm: UntypedFormGroup;
+
+  trip = false;
 
   constructor(protected store: Store<AppState>,
-              private fb: FormBuilder) {
+              private fb: UntypedFormBuilder) {
     super(store);
   }
 
-  protected settingsForm(): FormGroup {
+  protected settingsForm(): UntypedFormGroup {
     return this.mapWidgetSettingsForm;
   }
 
+  protected onWidgetConfigSet(widgetConfig: WidgetConfigComponentData) {
+    const params = widgetConfig.typeParameters as any;
+    if (isDefinedAndNotNull(params.trip)) {
+      this.trip = params.trip === true;
+    } else {
+      this.trip = false;
+    }
+  }
+
   protected defaultSettings(): WidgetSettings {
+    return mapWidgetDefaultSettings;
+  }
+
+  protected prepareInputSettings(settings: WidgetSettings): WidgetSettings {
     return {
-      ...defaultMapSettings
+      mapSettings: settings,
+      background: settings.background,
+      padding: settings.padding
     };
   }
 
   protected onSettingsSet(settings: WidgetSettings) {
     this.mapWidgetSettingsForm = this.fb.group({
-      mapSettings: [settings.mapSettings, []]
+      mapSettings: [settings.mapSettings, []],
+      background: [settings.background, []],
+      padding: [settings.padding, []]
     });
   }
 
-  protected prepareInputSettings(settings: WidgetSettings): WidgetSettings {
-    return {
-      mapSettings: settings
-    };
-  }
-
   protected prepareOutputSettings(settings: any): WidgetSettings {
-    return settings.mapSettings;
+    return {...settings.mapSettings, background: settings.background, padding: settings.padding};
   }
 }

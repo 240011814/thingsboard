@@ -1,5 +1,5 @@
 /**
- * Copyright © 2016-2023 The Thingsboard Authors
+ * Copyright © 2016-2025 The Thingsboard Authors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,22 +15,32 @@
  */
 package org.thingsboard.server.dao.asset;
 
+import org.thingsboard.server.common.data.EntityInfo;
 import org.thingsboard.server.common.data.asset.AssetProfile;
 import org.thingsboard.server.common.data.asset.AssetProfileInfo;
 import org.thingsboard.server.common.data.id.AssetProfileId;
 import org.thingsboard.server.common.data.id.TenantId;
 import org.thingsboard.server.common.data.page.PageData;
 import org.thingsboard.server.common.data.page.PageLink;
+import org.thingsboard.server.dao.entity.EntityDaoService;
 
-public interface AssetProfileService {
+import java.util.List;
+
+public interface AssetProfileService extends EntityDaoService {
 
     AssetProfile findAssetProfileById(TenantId tenantId, AssetProfileId assetProfileId);
 
+    AssetProfile findAssetProfileById(TenantId tenantId, AssetProfileId assetProfileId, boolean putInCache);
+
     AssetProfile findAssetProfileByName(TenantId tenantId, String profileName);
+
+    AssetProfile findAssetProfileByName(TenantId tenantId, String profileName, boolean putInCache);
 
     AssetProfileInfo findAssetProfileInfoById(TenantId tenantId, AssetProfileId assetProfileId);
 
     AssetProfile saveAssetProfile(AssetProfile assetProfile);
+
+    AssetProfile saveAssetProfile(AssetProfile assetProfile, boolean doValidate, boolean publishSaveEvent);
 
     void deleteAssetProfile(TenantId tenantId, AssetProfileId assetProfileId);
 
@@ -49,5 +59,9 @@ public interface AssetProfileService {
     boolean setDefaultAssetProfile(TenantId tenantId, AssetProfileId assetProfileId);
 
     void deleteAssetProfilesByTenantId(TenantId tenantId);
+
+    List<EntityInfo> findAssetProfileNamesByTenantId(TenantId tenantId, boolean activeOnly);
+
+    List<AssetProfileInfo> findAssetProfilesByIds(TenantId tenantId, List<AssetProfileId> assetProfileIds);
 
 }

@@ -1,5 +1,5 @@
 ///
-/// Copyright © 2016-2023 The Thingsboard Authors
+/// Copyright © 2016-2025 The Thingsboard Authors
 ///
 /// Licensed under the Apache License, Version 2.0 (the "License");
 /// you may not use this file except in compliance with the License.
@@ -20,7 +20,7 @@ import {
   Component,
   ElementRef,
   EventEmitter,
-  Input,
+  Input, NgZone,
   OnDestroy,
   OnInit,
   Output,
@@ -33,15 +33,14 @@ import { Store } from '@ngrx/store';
 import { AppState } from '@core/core.state';
 import { EntityId, entityIdEquals } from '@shared/models/id/entity-id';
 import { CollectionViewer, DataSource } from '@angular/cdk/collections';
-import { BehaviorSubject, fromEvent, merge, Observable, of, ReplaySubject } from 'rxjs';
+import { BehaviorSubject, merge, Observable, of, ReplaySubject, Subject } from 'rxjs';
 import { emptyPageData, PageData } from '@shared/models/page/page-data';
 import { PageLink } from '@shared/models/page/page-link';
-import { catchError, debounceTime, distinctUntilChanged, map, tap } from 'rxjs/operators';
+import { catchError, debounceTime, distinctUntilChanged, map, takeUntil } from 'rxjs/operators';
 import { EntityVersion, VersionCreationResult, VersionLoadResult } from '@shared/models/vc.models';
 import { EntitiesVersionControlService } from '@core/http/entities-version-control.service';
 import { MatPaginator } from '@angular/material/paginator';
 import { MatSort } from '@angular/material/sort';
-import { ResizeObserver } from '@juggle/resize-observer';
 import { hidePageSizePixelValue } from '@shared/models/constants';
 import { Direction, SortOrder } from '@shared/models/page/sort-order';
 import { BranchAutocompleteComponent } from '@shared/components/vc/branch-autocomplete.component';
@@ -54,7 +53,8 @@ import { EntityVersionDiffComponent } from '@home/components/vc/entity-version-d
 import { ComplexVersionCreateComponent } from '@home/components/vc/complex-version-create.component';
 import { ComplexVersionLoadComponent } from '@home/components/vc/complex-version-load.component';
 import { TbPopoverComponent } from '@shared/components/popover.component';
-import { AdminService } from "@core/http/admin.service";
+import { AdminService } from '@core/http/admin.service';
+import { FormBuilder } from '@angular/forms';
 
 @Component({
   selector: 'tb-entity-versions-table',
@@ -90,7 +90,10 @@ export class EntityVersionsTableComponent extends PageComponent implements OnIni
 
   isReadOnly: Observable<boolean>;
 
+  textSearch = this.fb.control('', {nonNullable: true});
+
   private componentResize$: ResizeObserver;
+  private destroy$ = new Subject<void>();
 
   @Input()
   set active(active: boolean) {
@@ -137,7 +140,9 @@ export class EntityVersionsTableComponent extends PageComponent implements OnIni
               private renderer: Renderer2,
               private cd: ChangeDetectorRef,
               private viewContainerRef: ViewContainerRef,
-              private elementRef: ElementRef) {
+              private elementRef: ElementRef,
+              private fb: FormBuilder,
+              private zone: NgZone) {
     super(store);
     this.dirtyValue = !this.activeValue;
     const sortOrder: SortOrder = { property: 'timestamp', direction: Direction.DESC };
@@ -147,11 +152,13 @@ export class EntityVersionsTableComponent extends PageComponent implements OnIni
 
   ngOnInit() {
     this.componentResize$ = new ResizeObserver(() => {
-      const showHidePageSize = this.elementRef.nativeElement.offsetWidth < hidePageSizePixelValue;
-      if (showHidePageSize !== this.hidePageSize) {
-        this.hidePageSize = showHidePageSize;
-        this.cd.markForCheck();
-      }
+      this.zone.run(() => {
+        const showHidePageSize = this.elementRef.nativeElement.offsetWidth < hidePageSizePixelValue;
+        if (showHidePageSize !== this.hidePageSize) {
+          this.hidePageSize = showHidePageSize;
+          this.cd.markForCheck();
+        }
+      });
     });
     this.componentResize$.observe(this.elementRef.nativeElement);
     this.isReadOnly = this.adminService.getRepositorySettingsInfo().pipe(map(settings => settings.readOnly));
@@ -161,6 +168,8 @@ export class EntityVersionsTableComponent extends PageComponent implements OnIni
     if (this.componentResize$) {
       this.componentResize$.disconnect();
     }
+    this.destroy$.next();
+    this.destroy$.complete();
   }
 
   branchChanged(newBranch: string) {
@@ -174,23 +183,20 @@ export class EntityVersionsTableComponent extends PageComponent implements OnIni
   }
 
   ngAfterViewInit() {
-    fromEvent(this.searchInputField.nativeElement, 'keyup')
-      .pipe(
-        debounceTime(400),
-        distinctUntilChanged(),
-        tap(() => {
-          this.paginator.pageIndex = 0;
-          this.updateData();
-        })
-      )
-      .subscribe();
+    this.textSearch.valueChanges.pipe(
+      debounceTime(400),
+      distinctUntilChanged((prev, current) => (this.pageLink.textSearch ?? '') === current.trim()),
+      takeUntil(this.destroy$)
+    ).subscribe((value) => {
+      this.paginator.pageIndex = 0;
+      this.pageLink.textSearch = value.trim();
+      this.updateData();
+    });
 
     this.sort.sortChange.subscribe(() => this.paginator.pageIndex = 0);
-    merge(this.sort.sortChange, this.paginator.page)
-      .pipe(
-        tap(() => this.updateData())
-      )
-      .subscribe();
+    merge(this.sort.sortChange, this.paginator.page).pipe(
+      takeUntil(this.destroy$)
+    ).subscribe(() => this.updateData());
     this.viewsInited = true;
     if (!this.singleEntityMode || (this.activeValue && this.externalEntityIdValue)) {
       this.initFromDefaultBranch();
@@ -205,9 +211,13 @@ export class EntityVersionsTableComponent extends PageComponent implements OnIni
     if (this.popoverService.hasPopover(trigger)) {
       this.popoverService.hidePopover(trigger);
     } else {
-      const createVersionPopover = this.popoverService.displayPopover(trigger, this.renderer,
-        this.viewContainerRef, EntityVersionCreateComponent, 'leftTop', true, null,
-        {
+      const createVersionPopover =  this.popoverService.displayPopover({
+        trigger,
+        renderer: this.renderer,
+        componentType: EntityVersionCreateComponent,
+        hostView: this.viewContainerRef,
+        preferredPlacement: 'leftTop',
+        context: {
           branch: this.branch,
           entityId: this.entityId,
           entityName: this.entityName,
@@ -223,8 +233,11 @@ export class EntityVersionsTableComponent extends PageComponent implements OnIni
             }
           }
         },
-        {maxHeight: '100vh', height: '100%', padding: '10px'},
-        {width: '400px', minWidth: '100%', maxWidth: '100%'}, {}, false);
+        showCloseButton: false,
+        overlayStyle: {maxHeight: '100vh', height: '100%', padding: '10px'},
+        popoverStyle: {width: '400px', minWidth: '100%', maxWidth: '100%'},
+        isModal: true
+      });
       createVersionPopover.tbComponentRef.instance.popoverComponent = createVersionPopover;
     }
   }
@@ -237,9 +250,13 @@ export class EntityVersionsTableComponent extends PageComponent implements OnIni
     if (this.popoverService.hasPopover(trigger)) {
       this.popoverService.hidePopover(trigger);
     } else {
-      const complexCreateVersionPopover = this.popoverService.displayPopover(trigger, this.renderer,
-        this.viewContainerRef, ComplexVersionCreateComponent, 'leftTop', true, null,
-        {
+      const complexCreateVersionPopover = this.popoverService.displayPopover({
+        trigger,
+        renderer: this.renderer,
+        componentType: ComplexVersionCreateComponent,
+        hostView: this.viewContainerRef,
+        preferredPlacement: 'leftTop',
+        context: {
           branch: this.branch,
           onClose: (result: VersionCreationResult | null, branch: string | null) => {
             complexCreateVersionPopover.hide();
@@ -252,8 +269,10 @@ export class EntityVersionsTableComponent extends PageComponent implements OnIni
             }
           }
         },
-        {maxHeight: '90vh', height: '100%', padding: '10px'},
-        {}, {}, false);
+        showCloseButton: false,
+        overlayStyle: {maxHeight: '90vh', height: '100%', padding: '10px'},
+        isModal: true
+      });
       complexCreateVersionPopover.tbComponentRef.instance.popoverComponent = complexCreateVersionPopover;
     }
   }
@@ -266,14 +285,21 @@ export class EntityVersionsTableComponent extends PageComponent implements OnIni
     if (this.popoverService.hasPopover(trigger)) {
       this.popoverService.hidePopover(trigger);
     } else {
-      const diffVersionPopover = this.popoverService.displayPopover(trigger, this.renderer,
-        this.viewContainerRef, EntityVersionDiffComponent, 'leftTop', true, null,
-        {
+      const diffVersionPopover = this.popoverService.displayPopover({
+        trigger,
+        renderer: this.renderer,
+        componentType: EntityVersionDiffComponent,
+        hostView: this.viewContainerRef,
+        preferredPlacement: 'leftTop',
+        context: {
           versionName: entityVersion.name,
           versionId: entityVersion.id,
           entityId: this.entityId,
           externalEntityId: this.externalEntityIdValue
-        }, {}, {}, {}, false);
+        },
+        showCloseButton: false,
+        isModal: true
+      });
       diffVersionPopover.tbComponentRef.instance.popoverComponent = diffVersionPopover;
       diffVersionPopover.tbComponentRef.instance.versionRestored.subscribe(() => {
         this.versionRestored.emit();
@@ -289,9 +315,13 @@ export class EntityVersionsTableComponent extends PageComponent implements OnIni
     if (this.popoverService.hasPopover(trigger)) {
       this.popoverService.hidePopover(trigger);
     } else {
-      const restoreVersionPopover = this.popoverService.displayPopover(trigger, this.renderer,
-        this.viewContainerRef, EntityVersionRestoreComponent, 'leftTop', true, null,
-        {
+      const restoreVersionPopover = this.popoverService.displayPopover({
+        trigger,
+        renderer: this.renderer,
+        componentType: EntityVersionRestoreComponent,
+        hostView: this.viewContainerRef,
+        preferredPlacement: 'leftTop',
+        context: {
           versionName: entityVersion.name,
           versionId: entityVersion.id,
           externalEntityId: this.externalEntityIdValue,
@@ -302,8 +332,11 @@ export class EntityVersionsTableComponent extends PageComponent implements OnIni
             }
           }
         },
-        {maxHeight: '100vh', height: '100%', padding: '10px'},
-        {width: '400px', minWidth: '100%', maxWidth: '100%'}, {}, false);
+        showCloseButton: false,
+        overlayStyle: {maxHeight: '100vh', height: '100%', padding: '10px'},
+        popoverStyle: {width: '400px', minWidth: '100%', maxWidth: '100%'},
+        isModal: true
+      });
       restoreVersionPopover.tbComponentRef.instance.popoverComponent = restoreVersionPopover;
     }
   }
@@ -316,17 +349,23 @@ export class EntityVersionsTableComponent extends PageComponent implements OnIni
     if (this.popoverService.hasPopover(trigger)) {
       this.popoverService.hidePopover(trigger);
     } else {
-      const restoreEntitiesVersionPopover = this.popoverService.displayPopover(trigger, this.renderer,
-        this.viewContainerRef, ComplexVersionLoadComponent, 'leftTop', true, null,
-        {
+      const restoreEntitiesVersionPopover = this.popoverService.displayPopover({
+        trigger,
+        renderer: this.renderer,
+        componentType: ComplexVersionLoadComponent,
+        hostView: this.viewContainerRef,
+        preferredPlacement: 'leftTop',
+        context: {
           versionName: entityVersion.name,
           versionId: entityVersion.id,
           onClose: (result: VersionLoadResult | null) => {
             restoreEntitiesVersionPopover.hide();
           }
         },
-        {maxHeight: '80vh', height: '100%', padding: '10px'},
-        {}, {}, false);
+        showCloseButton: false,
+        overlayStyle: {maxHeight: '80vh', height: '100%', padding: '10px'},
+        isModal: true
+      });
       restoreEntitiesVersionPopover.tbComponentRef.instance.popoverComponent = restoreEntitiesVersionPopover;
     }
   }
@@ -341,7 +380,6 @@ export class EntityVersionsTableComponent extends PageComponent implements OnIni
 
   enterFilterMode() {
     this.textSearchMode = true;
-    this.pageLink.textSearch = '';
     setTimeout(() => {
       this.searchInputField.nativeElement.focus();
       this.searchInputField.nativeElement.setSelectionRange(0, 0);
@@ -350,9 +388,7 @@ export class EntityVersionsTableComponent extends PageComponent implements OnIni
 
   exitFilterMode() {
     this.textSearchMode = false;
-    this.pageLink.textSearch = null;
-    this.paginator.pageIndex = 0;
-    this.updateData();
+    this.textSearch.reset();
   }
 
   private initFromDefaultBranch() {
@@ -377,6 +413,7 @@ export class EntityVersionsTableComponent extends PageComponent implements OnIni
   private resetSortAndFilter(update: boolean) {
     this.textSearchMode = false;
     this.pageLink.textSearch = null;
+    this.textSearch.reset('', {emitEvent: false});
     if (this.viewsInited) {
       this.paginator.pageIndex = 0;
       const sortable = this.sort.sortables.get('timestamp');
