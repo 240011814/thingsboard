@@ -20,6 +20,7 @@ import org.thingsboard.server.common.data.edge.EdgeEventType;
 
 import java.util.UUID;
 
+
 public class EntityIdFactory {
 
     public static EntityId getByTypeAndUuid(int type, String uuid) {
@@ -84,8 +85,6 @@ public class EntityIdFactory {
             case ADMIN_SETTINGS -> new AdminSettingsId(uuid);
             case AI_MODEL -> new AiModelId(uuid);
             case API_KEY -> new ApiKeyId(uuid);
-            case PRODUCT_PROPERTY:
-                return new PropertyId(uuid);
         };
     }
 

@@ -48,13 +48,12 @@ public enum Resource {
     EDGE(EntityType.EDGE),
     RPC(EntityType.RPC),
     QUEUE(EntityType.QUEUE),
-    PROPERTY(EntityType.PRODUCT_PROPERTY),
     NOTIFICATION(EntityType.NOTIFICATION_TARGET, EntityType.NOTIFICATION_TEMPLATE,
             EntityType.NOTIFICATION_REQUEST, EntityType.NOTIFICATION_RULE),
     MOBILE_APP_SETTINGS,
     JOB(EntityType.JOB),
     AI_MODEL(EntityType.AI_MODEL),
-    API_KEY(EntityType.API_KEY);
+    API_KEY(EntityType.API_KEY),
     VERSION_CONTROL;
 
 

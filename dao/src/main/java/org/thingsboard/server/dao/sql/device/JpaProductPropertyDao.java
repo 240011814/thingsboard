@@ -1,7 +1,7 @@
 package org.thingsboard.server.dao.sql.device;
 
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.data.repository.CrudRepository;
+import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Component;
 import org.thingsboard.server.common.data.device.property.ProductProperty;
 import org.thingsboard.server.common.data.id.DeviceProfileId;
@@ -36,7 +36,7 @@ public class JpaProductPropertyDao extends JpaAbstractDao<ProductPropertyEntity,
     }
 
     @Override
-    protected CrudRepository<ProductPropertyEntity, UUID> getCrudRepository() {
+    protected JpaRepository<ProductPropertyEntity, UUID> getRepository() {
         return productPropertyRepository;
     }
 

@@ -15,6 +15,14 @@
  */
 package org.thingsboard.server.common.data;
 
+import lombok.Getter;
+import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.Strings;
+
+import java.util.Arrays;
+import java.util.EnumSet;
+import java.util.List;
+
 /**
  * @author Andrew Shvayka
  */

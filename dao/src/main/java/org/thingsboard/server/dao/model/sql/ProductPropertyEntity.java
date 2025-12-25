@@ -1,17 +1,18 @@
 package org.thingsboard.server.dao.model.sql;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import io.hypersistence.utils.hibernate.type.json.JsonBinaryType;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.Table;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 import org.hibernate.annotations.Type;
-import org.hibernate.annotations.TypeDef;
 import org.thingsboard.common.util.JacksonUtil;
 import org.thingsboard.server.common.data.device.property.ProductProperty;
 import org.thingsboard.server.common.data.id.*;
 import org.thingsboard.server.dao.model.BaseEntity;
 import org.thingsboard.server.dao.model.BaseSqlEntity;
-import org.thingsboard.server.dao.util.mapping.JsonBinaryType;
-import javax.persistence.*;
 import java.util.UUID;
 import static org.thingsboard.server.dao.model.ModelConstants.*;
 
@@ -23,7 +24,6 @@ import static org.thingsboard.server.dao.model.ModelConstants.*;
 @Data
 @EqualsAndHashCode(callSuper = true)
 @Entity
-@TypeDef(name = "jsonb", typeClass = JsonBinaryType.class)
 @Table(name = "product_property")
 public class ProductPropertyEntity extends BaseSqlEntity<ProductProperty> implements BaseEntity<ProductProperty> {
     @Column(name = "tenant_id")
@@ -59,11 +59,11 @@ public class ProductPropertyEntity extends BaseSqlEntity<ProductProperty> implem
     @Column(name = OTA_PACKAGE_DEVICE_PROFILE_ID_COLUMN)
     private UUID deviceProfileId;
 
-    @Type(type = "jsonb")
+    @Type(JsonBinaryType.class)
     @Column(name = "data_profile", columnDefinition = "jsonb")
     private JsonNode dataProfile;
 
-    @Type(type = "jsonb")
+    @Type(JsonBinaryType.class)
     @Column(name = "collect_profile", columnDefinition = "jsonb")
     private JsonNode collectProfile;
 

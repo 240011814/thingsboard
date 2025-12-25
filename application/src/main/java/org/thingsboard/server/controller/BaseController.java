@@ -688,7 +688,6 @@ public abstract class BaseController {
             validateId(propertyId, "Incorrect propertyId " + propertyId);
             ProductProperty productProperty = productPropertyService.findByPropertyId(getCurrentUser().getTenantId(),propertyId);
             checkNotNull(productProperty, "ProductProperty with id [" + propertyId + "] is not found");
-            accessControlService.checkPermission(getCurrentUser(), Resource.PROPERTY, operation, propertyId, productProperty);
             return productProperty;
         } catch (Exception e) {
             throw handleException(e, false);

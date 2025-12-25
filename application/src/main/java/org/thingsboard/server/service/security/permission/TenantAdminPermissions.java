@@ -62,7 +62,6 @@ public class TenantAdminPermissions extends AbstractPermissions {
         put(Resource.JOB, tenantEntityPermissionChecker);
         put(Resource.AI_MODEL, aiModelPermissionChecker);
         put(Resource.API_KEY, apiKeysPermissionChecker);
-        put(Resource.PROPERTY,propertyEntityPermissionChecker);
     }
 
     public static final PermissionChecker propertyEntityPermissionChecker = new PermissionChecker() {

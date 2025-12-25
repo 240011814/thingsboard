@@ -51,7 +51,6 @@ public class CustomerUserPermissions extends AbstractPermissions {
         put(Resource.TB_RESOURCE, customerResourcePermissionChecker);
         put(Resource.MOBILE_APP_SETTINGS, new PermissionChecker.GenericPermissionChecker(Operation.READ));
         put(Resource.API_KEY, apiKeysPermissionChecker);
-        put(Resource.PROPERTY,propertyEntityPermissionChecker);
     }
 
     private static final PermissionChecker customerAlarmPermissionChecker = new PermissionChecker() {

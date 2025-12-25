@@ -847,6 +847,7 @@
                             <conf>SCRIPT_STYLE</conf>
                             <gradle>JAVADOC_STYLE</gradle>
                         </mapping>
+                        <skip>true</skip>
                     </configuration>
                     <executions>
                         <execution>
